@@ -1,0 +1,17 @@
+{
+  "name": "rayplayz-dashboard",
+  "version": "0.1.0",
+  "description": "Ray Playz public site + private message dashboard on Cloudflare Workers",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "secret:password": "wrangler secret put DASHBOARD_PASSWORD",
+    "secret:session": "wrangler secret put SESSION_SECRET",
+    "secret:anthropic": "wrangler secret put ANTHROPIC_API_KEY"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}
