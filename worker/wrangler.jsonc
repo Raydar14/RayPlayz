@@ -1,0 +1,26 @@
+// Cloudflare Worker config for the RayPlayz site + private dashboard.
+// After editing this file, redeploy with `npx wrangler deploy`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rayplayz-dashboard",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Static assets: everything in ./public is served as-is unless the Worker intercepts.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page"
+  },
+
+  // Non-secret config. Secrets (DASHBOARD_PASSWORD, SESSION_SECRET, ANTHROPIC_API_KEY)
+  // are set via the Cloudflare dashboard or `wrangler secret put`, never in this file.
+  "vars": {
+    "SESSION_MAX_AGE_HOURS": "168"
+  }
+
+  // Custom domain routes are attached from the Cloudflare dashboard once DNS is live:
+  //   rayplayzz.com/*   →  rayplayz-dashboard
+  //   www.rayplayzz.com/*   →  rayplayz-dashboard
+}

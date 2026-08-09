@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ray Playz · After Dark</title>
+<meta name="description" content="Ray Playz — after-dark creator. Mindful sensuality, consent-forward play, premium VIP & custom content. 18+ only. Subscribe on your favorite platform.">
+<meta property="og:title" content="Ray Playz · After Dark">
+<meta property="og:description" content="Mindful sensuality, consent-forward play, premium VIP content. 18+ creator.">
+<link rel="icon" type="image/png" href="rayplayz-favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#07070B; --void2:#0C0C13;
+    --panel:rgba(255,255,255,.035); --stroke:rgba(255,255,255,.10);
+    --ink:#F3EEF2; --mute:#8B8798; --dim:#615D70;
+    --neon:#FF2E7E; --neon-soft:#FF6FA8; --neon-ink:#FFD7E7;
+    --glow:0 0 6px rgba(255,46,126,.9), 0 0 16px rgba(255,46,126,.65), 0 0 34px rgba(255,46,126,.45);
+    --maxw:940px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0; background:var(--void); color:var(--ink);
+    font-family:'Space Grotesk',system-ui,sans-serif; line-height:1.65; overflow-x:hidden}
+  h1,h2,h3,.disp{font-family:'Space Grotesk',sans-serif; letter-spacing:-.01em}
+  a{color:inherit; text-decoration:none}
+
+  /* atmosphere: neon fog + fine grid */
+  .bg{position:fixed; inset:0; z-index:0; pointer-events:none}
+  .fog{position:absolute; border-radius:50%; filter:blur(90px); opacity:.5}
+  .fog1{width:60vmax;height:60vmax;top:-24vmax;left:-14vmax;background:radial-gradient(circle,#FF2E7E,transparent 65%)}
+  .fog2{width:44vmax;height:44vmax;bottom:-20vmax;right:-12vmax;background:radial-gradient(circle,#7A1F4E,transparent 68%);opacity:.6}
+  .grid{position:absolute; inset:0; opacity:.05;
+    background-image:linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px);
+    background-size:64px 64px; mask-image:radial-gradient(circle at 50% 20%,#000 40%,transparent 85%)}
+
+  .wrap{position:relative; z-index:2; max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+  /* age gate */
+  .gate{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; padding:24px;
+    background:radial-gradient(circle at 50% 35%,rgba(255,46,126,.12),rgba(6,6,10,.97) 70%); backdrop-filter:blur(10px)}
+  .gate.hide{display:none}
+  .gate-card{max-width:430px; text-align:center; background:rgba(12,12,19,.9); border:1px solid var(--stroke);
+    border-radius:20px; padding:42px 32px}
+  .gate-mark{width:104px;height:99px;margin:0 auto 8px}
+  .gate-card h2{font-family:'Unbounded'; font-weight:700; letter-spacing:-.02em; font-size:1.3rem; margin:.4em 0 .35em}
+  .gate-card p{color:var(--mute); font-size:.93rem; margin:0 0 26px}
+  .gate-btns{display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
+
+  .btn{display:inline-flex; align-items:center; gap:9px; cursor:pointer; font-family:'Space Grotesk'; font-weight:700;
+    font-size:.98rem; padding:14px 26px; border-radius:4px; border:1px solid transparent; transition:.18s}
+  .btn:focus-visible{outline:2px solid var(--neon); outline-offset:3px}
+  .btn-primary{color:var(--void); background:var(--neon); box-shadow:var(--glow)}
+  .btn-primary:hover{background:var(--neon-soft); transform:translateY(-1px)}
+  .btn-ghost{color:var(--ink); border-color:var(--stroke); background:transparent}
+  .btn-ghost:hover{border-color:var(--neon); color:var(--neon-ink); box-shadow:var(--glow)}
+  .btn-leave{color:var(--mute); border-color:var(--stroke); background:transparent}
+
+  /* hero */
+  header.hero{padding:70px 0 34px; text-align:center}
+  .hero-mark svg,.gate-mark svg{width:100%;height:100%;display:block}
+  .hero-mark{width:190px; height:181px; margin:2px auto 8px; animation:rise .8s ease-out both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  .wordmark{font-family:'Unbounded'; font-weight:700; font-size:clamp(2.2rem,7.6vw,4.2rem); line-height:1.04; margin:0;
+    letter-spacing:-.02em; color:#FFF3F8; text-shadow:var(--glow)}
+  .tag{font-family:'Space Grotesk'; font-weight:500; letter-spacing:.55em; font-size:.8rem; text-transform:uppercase;
+    color:var(--neon-ink); text-shadow:0 0 10px rgba(255,46,126,.7); margin:14px 0 0; padding-left:.55em}
+  .bio{max-width:600px; margin:24px auto 26px; color:#CFC9DA; font-size:1.05rem}
+  .bio b{color:var(--neon-ink); font-weight:600}
+  .hero-cta{display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
+  .neon-flicker{animation:flick 2.6s ease-out both}
+  @keyframes flick{0%{opacity:0}6%{opacity:1}8%{opacity:.3}10%{opacity:1}12%{opacity:.4}14%{opacity:1}
+    46%{opacity:1}48%{opacity:.6}50%{opacity:1}100%{opacity:1}}
+
+  section{padding:52px 0}
+  .eyebrow{font-family:'Space Grotesk'; text-transform:uppercase; letter-spacing:.4em; font-size:.72rem;
+    color:var(--neon); text-align:center; margin:0 0 10px}
+  .sec-title{font-family:'Unbounded'; letter-spacing:-.02em; text-align:center; font-size:clamp(1.35rem,3.8vw,2rem); margin:0 0 34px; font-weight:700}
+
+  .pillars{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:1px; background:var(--stroke);
+    border:1px solid var(--stroke); border-radius:14px; overflow:hidden}
+  .pill{background:var(--void2); padding:28px 24px; transition:.2s}
+  .pill:hover{background:#12070E}
+  .pill .lab{font-family:'Space Grotesk'; font-size:.7rem; letter-spacing:.25em; color:var(--neon); text-transform:uppercase}
+  .pill h3{margin:.7em 0 .4em; font-size:1.16rem; font-weight:700}
+  .pill p{margin:0; color:var(--mute); font-size:.92rem}
+
+  .links{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px}
+  .lnk{display:flex; align-items:center; gap:15px; background:var(--panel); border:1px solid var(--stroke);
+    border-radius:10px; padding:16px 18px; transition:.16s}
+  .lnk:hover{border-color:var(--neon); background:rgba(255,46,126,.06); box-shadow:0 0 24px rgba(255,46,126,.15)}
+  .lnk:focus-visible{outline:2px solid var(--neon); outline-offset:2px}
+  .lnk .badge{width:40px;height:40px;flex:0 0 auto;border:1px solid var(--neon);border-radius:8px;display:grid;
+    place-items:center;font-family:'Space Grotesk';font-weight:800;font-size:.9rem;color:var(--neon-ink);
+    box-shadow:inset 0 0 12px rgba(255,46,126,.25)}
+  .lnk .t{font-family:'Space Grotesk';font-weight:700;font-size:1.02rem;line-height:1.15}
+  .lnk .s{display:block;font-family:'Space Grotesk';font-weight:400;font-size:.8rem;color:var(--mute)}
+  .lnk .arrow{margin-left:auto;color:var(--dim);transition:.16s}
+  .lnk:hover .arrow{color:var(--neon);transform:translateX(4px)}
+
+  .why{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:26px}
+  .why div{border-top:1px solid var(--neon);padding-top:16px}
+  .why .n{font-family:'Space Grotesk';font-weight:800;font-size:.85rem;letter-spacing:.2em;color:var(--neon)}
+  .why h3{margin:.5em 0 .4em;font-size:1.14rem;font-weight:700}
+  .why p{margin:0;color:var(--mute);font-size:.92rem}
+
+  .notify{border:1px solid var(--stroke);border-radius:16px;padding:44px 26px;text-align:center;
+    background:linear-gradient(180deg,rgba(255,46,126,.06),transparent)}
+  .notify h2{font-family:'Unbounded';letter-spacing:-.02em;margin:0 0 6px;font-size:1.4rem;font-weight:700}
+  .notify p{color:var(--mute);margin:0 0 22px}
+  .form{display:flex;gap:10px;max-width:430px;margin:0 auto;flex-wrap:wrap;justify-content:center}
+  .form input{flex:1 1 220px;min-width:200px;padding:14px 18px;border-radius:4px;border:1px solid var(--stroke);
+    background:rgba(0,0,0,.4);color:#fff;font-family:'Space Grotesk';font-size:1rem}
+  .form input::placeholder{color:var(--dim)}
+  .form input:focus{outline:none;border-color:var(--neon)}
+
+  footer{padding:44px 0 64px;text-align:center;color:var(--dim);font-size:.84rem}
+  .age-badge{display:inline-block;border:1px solid var(--neon);color:var(--neon-ink);border-radius:4px;
+    padding:4px 14px;font-family:'Space Grotesk';font-weight:700;margin-bottom:16px;box-shadow:var(--glow)}
+  footer .tags{max-width:720px;margin:0 auto 16px;font-size:.76rem;color:#4E4A5C;line-height:1.9}
+  footer a{color:var(--neon-soft)}
+
+  @media (prefers-reduced-motion: reduce){
+    .neon-flicker{animation:none}
+    .btn,.lnk,.pill{transition:none}
+    html{scroll-behavior:auto}
+  }
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"><span class="fog fog1"></span><span class="fog fog2"></span><span class="grid"></span></div>
+
+<!-- age gate -->
+<div class="gate" id="gate" role="dialog" aria-modal="true" aria-labelledby="gt">
+  <div class="gate-card">
+    <div class="gate-mark" id="gate-mark"></div>
+    <h2 id="gt">After dark starts here</h2>
+    <p>This page contains suggestive, adult-oriented content. You must be <b style="color:var(--neon-ink)">18 or older</b> (or the age of majority where you live) to enter.</p>
+    <div class="gate-btns">
+      <button class="btn btn-primary" id="enterBtn">I'm 18+ — enter</button>
+      <a class="btn btn-leave" href="https://www.google.com">Leave</a>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="hero-mark" id="hero-mark"></div>
+    <h1 class="wordmark sr-only">Ray Playz</h1>
+    <p class="tag">After Dark</p>
+    <p class="bio">Sensuality with a <b>pulse</b> and a <b>point of view</b>. Mindful teasing, consent-forward play, and premium content made with intention — for the ones with taste. Come curious.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#subscribe">Subscribe →</a>
+      <a class="btn btn-ghost" href="#vibe">The vibe</a>
+    </div>
+  </header>
+
+  <section id="vibe">
+    <p class="eyebrow">The vibe</p>
+    <h2 class="sec-title">What you're signing up for</h2>
+    <div class="pillars">
+      <div class="pill"><span class="lab">01 — Slow burn</span><h3>Mindful Sensuality</h3><p>Breathwork, low light, unhurried energy. Tension is the whole point.</p></div>
+      <div class="pill"><span class="lab">02 — Trust</span><h3>Consent &amp; Kink</h3><p>Boundaries, safewords and play, explained like an adult. Consent is the sexiest part.</p></div>
+      <div class="pill"><span class="lab">03 — Confidence</span><h3>Body Positive</h3><p>Curves and confidence, every angle. Owning it, on camera.</p></div>
+      <div class="pill"><span class="lab">04 — Story</span><h3>Playful Roleplay</h3><p>Scene-driven, character-led. A calm, clever voice you'll want to keep listening to.</p></div>
+      <div class="pill"><span class="lab">05 — Wind down</span><h3>Guided Wellness</h3><p>Meditations and after-hours calm — with just enough mischief to keep you up.</p></div>
+      <div class="pill"><span class="lab">06 — VIP</span><h3>Customs &amp; DMs</h3><p>Personal attention, custom scenes, real time. Premium, because you have taste.</p></div>
+    </div>
+  </section>
+
+  <section id="subscribe">
+    <p class="eyebrow">Where to find me</p>
+    <h2 class="sec-title">Pick your room</h2>
+    <div class="links">
+      <a class="lnk" href="#" data-note="main OnlyFans URL"><span class="badge">OF</span><span><span class="t">OnlyFans</span><span class="s">The main room — all of me</span></span><span class="arrow">→</span></a>
+      <a class="lnk" href="#" data-note="Fansly URL"><span class="badge">Fa</span><span><span class="t">Fansly</span><span class="s">Tiered access &amp; extras</span></span><span class="arrow">→</span></a>
+      <a class="lnk" href="#" data-note="X / Twitter"><span class="badge">𝕏</span><span><span class="t">X / Twitter</span><span class="s">Free teasers, nightly</span></span><span class="arrow">→</span></a>
+      <a class="lnk" href="#" data-note="Reddit"><span class="badge">Re</span><span><span class="t">Reddit</span><span class="s">Previews, polls &amp; community</span></span><span class="arrow">→</span></a>
+      <a class="lnk" href="#" data-note="Tip / wishlist"><span class="badge">Ti</span><span><span class="t">Tip &amp; Wishlist</span><span class="s">Spoil me — I'm worth it</span></span><span class="arrow">→</span></a>
+      <a class="lnk" href="#subscribe" data-note="VIP / customs"><span class="badge">V</span><span><span class="t">VIP &amp; Customs</span><span class="s">Your scene, made to order</span></span><span class="arrow">→</span></a>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Why me</p>
+    <h2 class="sec-title">Not your average feed</h2>
+    <div class="why">
+      <div><div class="n">01</div><h3>Made with intention</h3><p>Educated, self-aware, deliberate. Every post has a point of view.</p></div>
+      <div><div class="n">02</div><h3>Consent-forward</h3><p>Respect first, always. Trust is what makes it feel this good.</p></div>
+      <div><div class="n">03</div><h3>Premium by design</h3><p>Quality over quantity. Exclusivity, personality, taste.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="notify">
+      <h2>First in line</h2>
+      <p>Drops, deals and a little trouble — straight to your inbox.</p>
+      <form class="form" action="https://formspree.io/f/YOUR_ID" method="POST">
+        <input type="email" name="email" placeholder="your@email.com" aria-label="Email" required>
+        <button class="btn btn-primary" type="submit">Notify me</button>
+      </form>
+    </div>
+  </section>
+
+  <footer>
+    <div class="age-badge">18+ ONLY</div>
+    <p class="tags">Ray Playz — after-dark creator · mindful sensuality · consent-forward kink education · body-positive adult content · guided sensual wellness · playful roleplay · premium VIP &amp; custom content · findom-friendly · OnlyFans &amp; Fansly creator.</p>
+    <p>All models are 18+ · All content is consensual and for adults only.<br>© <span id="yr"></span> Ray Playz · A Play Thingz family brand · <a href="#">Terms</a> · <a href="#">Privacy</a> · <a href="#">Contact</a></p>
+  </footer>
+</div>
+
+<template id="mark-svg">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 210" width="220" height="210">
+  <defs><linearGradient id="hp" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF5C9E"/><stop offset="55%" stop-color="#FF2E7E"/><stop offset="100%" stop-color="#E01463"/></linearGradient>
+  <filter id="hglow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="7"/></filter></defs>
+  
+  <g transform="translate(10,16)">
+    <path d="M100 176 C 40 130, 8 96, 8 60 C 8 30, 30 12, 54 12 C 76 12, 92 26, 100 44 C 108 26, 124 12, 146 12 C 170 12, 192 30, 192 60 C 192 96, 160 130, 100 176 Z" fill="#FF2E7E" filter="url(#hglow)" opacity="0.55"/>
+    <path d="M100 176 C 40 130, 8 96, 8 60 C 8 30, 30 12, 54 12 C 76 12, 92 26, 100 44 C 108 26, 124 12, 146 12 C 170 12, 192 30, 192 60 C 192 96, 160 130, 100 176 Z" fill="url(#hp)" stroke="#FF8CBB" stroke-opacity="0.5" stroke-width="1.5"/>
+    <ellipse cx="70" cy="52" rx="30" ry="16" fill="#fff" opacity="0.14"/>
+    <g transform="translate(62.5,80)"><g fill="none" stroke="#FFE9F1" stroke-width="7.5" stroke-linejoin="round"><path transform="translate(0.00,0) scale(0.04400,-0.04400)" d="M238 329H288Q330 329 357.0 348.5Q384 368 384 406Q384 444 359.5 463.5Q335 483 282 483Q269 483 259.0 482.0Q249 481 238 479ZM306 196H65V549Q65 570 77.0 581.5Q89 593 108 600Q142 612 187.0 617.5Q232 623 283 623Q421 623 491.0 564.5Q561 506 561 408Q561 347 526.5 299.0Q492 251 434.5 223.5Q377 196 306 196ZM269 235 428 267Q450 237 473.0 208.0Q496 179 516.5 152.0Q537 125 554.0 102.0Q571 79 581 62Q571 28 544.5 9.0Q518 -10 485 -10Q442 -10 419.5 9.0Q397 28 378 59ZM65 264H240V1Q229 -2 206.0 -5.0Q183 -8 159 -8Q107 -8 86.0 10.5Q65 29 65 75Z"/>
+<path transform="translate(26.80,0) scale(0.04400,-0.04400)" d="M260 108Q277 108 297.5 111.5Q318 115 328 121V201L256 195Q228 193 210.0 183.0Q192 173 192 153Q192 133 207.5 120.5Q223 108 260 108ZM252 501Q361 501 426.5 456.5Q492 412 492 318V94Q492 68 477.5 51.5Q463 35 443 23Q411 4 365.0 -6.0Q319 -16 260 -16Q155 -16 91.5 24.5Q28 65 28 147Q28 216 69.5 253.0Q111 290 196 299L327 313V320Q327 349 301.5 361.5Q276 374 228 374Q191 374 154.5 366.0Q118 358 89 346Q76 355 67.0 373.5Q58 392 58 412Q58 460 109 480Q138 491 177.5 496.0Q217 501 252 501Z"/>
+<path transform="translate(50.73,0) scale(0.04400,-0.04400)" d="M128 124Q113 158 96.0 202.5Q79 247 60.5 309.5Q42 372 20 461Q34 475 57.5 485.5Q81 496 109 496Q144 496 167.0 481.5Q190 467 201 427Q221 357 241.0 288.5Q261 220 280 152H284Q300 198 315.5 253.0Q331 308 344.5 365.5Q358 423 367 477Q384 486 402.0 491.0Q420 496 440 496Q475 496 501.0 481.0Q527 466 527 429Q527 397 519.0 355.0Q511 313 497.0 266.0Q483 219 465.0 171.5Q447 124 427.0 80.5Q407 37 387 2Q331 -95 283.0 -142.0Q235 -189 186 -189Q146 -189 119.0 -164.0Q92 -139 87 -99Q108 -81 129.5 -60.0Q151 -39 171.0 -15.5Q191 8 207 31Q190 36 170.5 54.5Q151 73 128 124Z"/></g><g fill="#160610"><path transform="translate(0.00,0) scale(0.04400,-0.04400)" d="M238 329H288Q330 329 357.0 348.5Q384 368 384 406Q384 444 359.5 463.5Q335 483 282 483Q269 483 259.0 482.0Q249 481 238 479ZM306 196H65V549Q65 570 77.0 581.5Q89 593 108 600Q142 612 187.0 617.5Q232 623 283 623Q421 623 491.0 564.5Q561 506 561 408Q561 347 526.5 299.0Q492 251 434.5 223.5Q377 196 306 196ZM269 235 428 267Q450 237 473.0 208.0Q496 179 516.5 152.0Q537 125 554.0 102.0Q571 79 581 62Q571 28 544.5 9.0Q518 -10 485 -10Q442 -10 419.5 9.0Q397 28 378 59ZM65 264H240V1Q229 -2 206.0 -5.0Q183 -8 159 -8Q107 -8 86.0 10.5Q65 29 65 75Z"/>
+<path transform="translate(26.80,0) scale(0.04400,-0.04400)" d="M260 108Q277 108 297.5 111.5Q318 115 328 121V201L256 195Q228 193 210.0 183.0Q192 173 192 153Q192 133 207.5 120.5Q223 108 260 108ZM252 501Q361 501 426.5 456.5Q492 412 492 318V94Q492 68 477.5 51.5Q463 35 443 23Q411 4 365.0 -6.0Q319 -16 260 -16Q155 -16 91.5 24.5Q28 65 28 147Q28 216 69.5 253.0Q111 290 196 299L327 313V320Q327 349 301.5 361.5Q276 374 228 374Q191 374 154.5 366.0Q118 358 89 346Q76 355 67.0 373.5Q58 392 58 412Q58 460 109 480Q138 491 177.5 496.0Q217 501 252 501Z"/>
+<path transform="translate(50.73,0) scale(0.04400,-0.04400)" d="M128 124Q113 158 96.0 202.5Q79 247 60.5 309.5Q42 372 20 461Q34 475 57.5 485.5Q81 496 109 496Q144 496 167.0 481.5Q190 467 201 427Q221 357 241.0 288.5Q261 220 280 152H284Q300 198 315.5 253.0Q331 308 344.5 365.5Q358 423 367 477Q384 486 402.0 491.0Q420 496 440 496Q475 496 501.0 481.0Q527 466 527 429Q527 397 519.0 355.0Q511 313 497.0 266.0Q483 219 465.0 171.5Q447 124 427.0 80.5Q407 37 387 2Q331 -95 283.0 -142.0Q235 -189 186 -189Q146 -189 119.0 -164.0Q92 -139 87 -99Q108 -81 129.5 -60.0Q151 -39 171.0 -15.5Q191 8 207 31Q190 36 170.5 54.5Q151 73 128 124Z"/></g></g><g transform="translate(41.4,126)"><g fill="none" stroke="#FFE9F1" stroke-width="7.5" stroke-linejoin="round"><path transform="translate(0.00,0) scale(0.04800,-0.04800)" d="M239 325H287Q328 325 353.5 345.5Q379 366 379 404Q379 442 355.5 462.5Q332 483 287 483Q271 483 260.5 482.5Q250 482 239 480ZM298 188H65V549Q65 570 77.0 581.5Q89 593 108 600Q142 612 189.0 617.5Q236 623 273 623Q410 623 483.5 564.0Q557 505 557 404Q557 339 525.0 290.5Q493 242 435.0 215.0Q377 188 298 188ZM65 264H240V1Q229 -2 206.0 -5.0Q183 -8 159 -8Q107 -8 86.0 10.5Q65 29 65 75Z"/>
+<path transform="translate(27.89,0) scale(0.04800,-0.04800)" d="M57 264H227V1Q216 -2 195.5 -5.0Q175 -8 151 -8Q102 -8 79.5 9.0Q57 26 57 72ZM227 175H57V652Q68 655 88.5 658.0Q109 661 133 661Q183 661 205.0 644.5Q227 628 227 581Z"/>
+<path transform="translate(41.52,0) scale(0.04800,-0.04800)" d="M260 108Q277 108 297.5 111.5Q318 115 328 121V201L256 195Q228 193 210.0 183.0Q192 173 192 153Q192 133 207.5 120.5Q223 108 260 108ZM252 501Q361 501 426.5 456.5Q492 412 492 318V94Q492 68 477.5 51.5Q463 35 443 23Q411 4 365.0 -6.0Q319 -16 260 -16Q155 -16 91.5 24.5Q28 65 28 147Q28 216 69.5 253.0Q111 290 196 299L327 313V320Q327 349 301.5 361.5Q276 374 228 374Q191 374 154.5 366.0Q118 358 89 346Q76 355 67.0 373.5Q58 392 58 412Q58 460 109 480Q138 491 177.5 496.0Q217 501 252 501Z"/>
+<path transform="translate(67.63,0) scale(0.04800,-0.04800)" d="M128 124Q113 158 96.0 202.5Q79 247 60.5 309.5Q42 372 20 461Q34 475 57.5 485.5Q81 496 109 496Q144 496 167.0 481.5Q190 467 201 427Q221 357 241.0 288.5Q261 220 280 152H284Q300 198 315.5 253.0Q331 308 344.5 365.5Q358 423 367 477Q384 486 402.0 491.0Q420 496 440 496Q475 496 501.0 481.0Q527 466 527 429Q527 397 519.0 355.0Q511 313 497.0 266.0Q483 219 465.0 171.5Q447 124 427.0 80.5Q407 37 387 2Q331 -95 283.0 -142.0Q235 -189 186 -189Q146 -189 119.0 -164.0Q92 -139 87 -99Q108 -81 129.5 -60.0Q151 -39 171.0 -15.5Q191 8 207 31Q190 36 170.5 54.5Q151 73 128 124Z"/>
+<path transform="translate(94.08,0) scale(0.04800,-0.04800)" d="M136 0H69Q53 14 43.5 33.0Q34 52 34 76Q34 96 43.5 115.5Q53 135 67 152L351 485H410Q426 471 435.5 452.0Q445 433 445 409Q445 389 435.5 369.5Q426 350 412 333ZM374 485V354H55Q49 365 43.5 382.5Q38 400 38 419Q38 454 54.0 469.5Q70 485 95 485ZM121 0V131H440Q446 121 451.5 103.5Q457 86 457 66Q457 31 441.5 15.5Q426 0 400 0Z"/></g><g fill="#160610"><path transform="translate(0.00,0) scale(0.04800,-0.04800)" d="M239 325H287Q328 325 353.5 345.5Q379 366 379 404Q379 442 355.5 462.5Q332 483 287 483Q271 483 260.5 482.5Q250 482 239 480ZM298 188H65V549Q65 570 77.0 581.5Q89 593 108 600Q142 612 189.0 617.5Q236 623 273 623Q410 623 483.5 564.0Q557 505 557 404Q557 339 525.0 290.5Q493 242 435.0 215.0Q377 188 298 188ZM65 264H240V1Q229 -2 206.0 -5.0Q183 -8 159 -8Q107 -8 86.0 10.5Q65 29 65 75Z"/>
+<path transform="translate(27.89,0) scale(0.04800,-0.04800)" d="M57 264H227V1Q216 -2 195.5 -5.0Q175 -8 151 -8Q102 -8 79.5 9.0Q57 26 57 72ZM227 175H57V652Q68 655 88.5 658.0Q109 661 133 661Q183 661 205.0 644.5Q227 628 227 581Z"/>
+<path transform="translate(41.52,0) scale(0.04800,-0.04800)" d="M260 108Q277 108 297.5 111.5Q318 115 328 121V201L256 195Q228 193 210.0 183.0Q192 173 192 153Q192 133 207.5 120.5Q223 108 260 108ZM252 501Q361 501 426.5 456.5Q492 412 492 318V94Q492 68 477.5 51.5Q463 35 443 23Q411 4 365.0 -6.0Q319 -16 260 -16Q155 -16 91.5 24.5Q28 65 28 147Q28 216 69.5 253.0Q111 290 196 299L327 313V320Q327 349 301.5 361.5Q276 374 228 374Q191 374 154.5 366.0Q118 358 89 346Q76 355 67.0 373.5Q58 392 58 412Q58 460 109 480Q138 491 177.5 496.0Q217 501 252 501Z"/>
+<path transform="translate(67.63,0) scale(0.04800,-0.04800)" d="M128 124Q113 158 96.0 202.5Q79 247 60.5 309.5Q42 372 20 461Q34 475 57.5 485.5Q81 496 109 496Q144 496 167.0 481.5Q190 467 201 427Q221 357 241.0 288.5Q261 220 280 152H284Q300 198 315.5 253.0Q331 308 344.5 365.5Q358 423 367 477Q384 486 402.0 491.0Q420 496 440 496Q475 496 501.0 481.0Q527 466 527 429Q527 397 519.0 355.0Q511 313 497.0 266.0Q483 219 465.0 171.5Q447 124 427.0 80.5Q407 37 387 2Q331 -95 283.0 -142.0Q235 -189 186 -189Q146 -189 119.0 -164.0Q92 -139 87 -99Q108 -81 129.5 -60.0Q151 -39 171.0 -15.5Q191 8 207 31Q190 36 170.5 54.5Q151 73 128 124Z"/>
+<path transform="translate(94.08,0) scale(0.04800,-0.04800)" d="M136 0H69Q53 14 43.5 33.0Q34 52 34 76Q34 96 43.5 115.5Q53 135 67 152L351 485H410Q426 471 435.5 452.0Q445 433 445 409Q445 389 435.5 369.5Q426 350 412 333ZM374 485V354H55Q49 365 43.5 382.5Q38 400 38 419Q38 454 54.0 469.5Q70 485 95 485ZM121 0V131H440Q446 121 451.5 103.5Q457 86 457 66Q457 31 441.5 15.5Q426 0 400 0Z"/></g></g>
+  </g></svg>
+</template>
+
+<script>
+  (function(){
+    var t=document.getElementById('mark-svg').innerHTML;
+    ['gate-mark','hero-mark'].forEach(function(id,i){
+      var e=document.getElementById(id); if(!e)return;
+      var s=t.replace(/id="hp"/g,'id="hp'+i+'"').replace(/url\(#hp\)/g,'url(#hp'+i+')')
+             .replace(/id="hglow"/g,'id="hglow'+i+'"').replace(/url\(#hglow\)/g,'url(#hglow'+i+')');
+      e.innerHTML=s;
+    });
+    document.getElementById('yr').textContent=new Date().getFullYear();
+    var gate=document.getElementById('gate'),ok=false;
+    try{ok=localStorage.getItem('rp_age')==='1';}catch(e){}
+    if(ok)gate.classList.add('hide');
+    document.getElementById('enterBtn').addEventListener('click',function(){
+      try{localStorage.setItem('rp_age','1');}catch(e){}
+      gate.classList.add('hide');
+    });
+  })();
+</script>
+</body>
+</html>
