@@ -2,7 +2,8 @@
 // After editing this file, redeploy with `npx wrangler deploy`.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "rayplayz-dashboard",
+  // Must match the Cloudflare project name so Wrangler and the CI system agree.
+  "name": "rayplayz",
   "main": "src/worker.js",
   "compatibility_date": "2025-01-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -21,6 +22,6 @@
   }
 
   // Custom domain routes are attached from the Cloudflare dashboard once DNS is live:
-  //   rayplayzz.com/*   →  rayplayz-dashboard
-  //   www.rayplayzz.com/*   →  rayplayz-dashboard
+  //   rayplayzz.com/*   →  rayplayz
+  //   www.rayplayzz.com/*   →  rayplayz
 }
