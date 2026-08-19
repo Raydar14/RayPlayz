@@ -321,6 +321,118 @@ a{color:inherit; text-decoration:none}
 .toast.ok{border-color:rgba(74,222,128,.4); color:#7cf0a4}
 @keyframes toastIn{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
 
+/* ---------- PHASE 4: AI ---------- */
+
+/* topbar usage chip */
+.usage{
+  font-family:'Space Grotesk'; font-size:.72rem; color:var(--dim); letter-spacing:.03em;
+  padding:3px 9px; border-radius:10px; border:1px solid var(--stroke); cursor:default;
+}
+.usage.warm{color:var(--warn); border-color:rgba(251,191,36,.35)}
+.usage.hot{color:var(--err); border-color:rgba(248,113,113,.35)}
+
+/* score badge in header */
+.score-badge{
+  display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:14px;
+  font-family:'Space Grotesk'; font-weight:700; font-size:.78rem; letter-spacing:.02em;
+  border:1px solid var(--stroke); color:var(--mute);
+}
+.score-badge.pos{background:rgba(74,222,128,.10); border-color:rgba(74,222,128,.35); color:#7cf0a4}
+.score-badge.neg{background:rgba(248,113,113,.10); border-color:rgba(248,113,113,.35); color:var(--err)}
+.score-badge.zero{color:var(--mute)}
+.score-badge .lbl{font-weight:500; color:var(--dim); text-transform:uppercase; letter-spacing:.15em; font-size:.65rem}
+
+/* recommend-action pill */
+.rec-pill{
+  display:inline-block; padding:3px 10px; border-radius:12px; margin-left:6px;
+  font-family:'Space Grotesk'; font-weight:700; font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
+}
+.rec-advance{background:rgba(74,222,128,.15); color:#7cf0a4}
+.rec-hold   {background:rgba(255,255,255,.08); color:var(--mute)}
+.rec-vet_more{background:rgba(251,191,36,.15); color:#fcd77a}
+.rec-close  {background:rgba(248,113,113,.15); color:var(--err)}
+
+/* gate warning banner */
+.gate-warn{
+  padding:10px 14px; background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.35);
+  border-radius:8px; margin-bottom:14px; color:var(--err); font-size:.85rem;
+  display:flex; align-items:center; gap:10px;
+}
+.gate-warn::before{content:"⚠"; font-size:1.1rem; flex:0 0 auto}
+
+/* AI panel wrapper */
+.ai-panel{
+  background:linear-gradient(180deg,rgba(255,46,126,.06),transparent);
+  border:1px solid rgba(255,46,126,.28); border-radius:12px; padding:14px 16px; margin-bottom:16px;
+}
+.ai-panel h3{
+  margin:0 0 8px; font-size:.7rem; font-family:'Space Grotesk'; font-weight:700; letter-spacing:.24em;
+  text-transform:uppercase; color:var(--neon-ink);
+}
+.ai-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.ai-actions .btn{padding:8px 14px; font-size:.82rem}
+.ai-cost{font-size:.7rem; color:var(--dim); margin-left:auto}
+.ai-empty{color:var(--mute); font-size:.85rem; margin:8px 0 0}
+.ai-read{margin:10px 0 6px; padding:10px 12px; background:var(--void2); border-left:2px solid var(--neon);
+  border-radius:4px; font-size:.9rem; color:var(--ink); font-style:italic}
+
+/* drafts list */
+.drafts{display:flex; flex-direction:column; gap:8px; margin-top:12px}
+.draft{
+  background:var(--void2); border:1px solid var(--stroke); border-radius:10px; padding:12px 14px;
+  display:flex; flex-direction:column; gap:6px;
+}
+.draft .tone{
+  align-self:flex-start; font-family:'Space Grotesk'; font-size:.65rem; font-weight:700; letter-spacing:.18em;
+  text-transform:uppercase; padding:2px 8px; border-radius:8px;
+}
+.draft .tone.playful    {background:rgba(255,111,168,.15); color:var(--neon-soft)}
+.draft .tone.warm-direct{background:rgba(74,222,128,.15); color:#7cf0a4}
+.draft .tone.vet        {background:rgba(251,191,36,.15); color:#fcd77a}
+.draft .text{font-size:.95rem; line-height:1.5; color:var(--ink); white-space:pre-wrap; overflow-wrap:anywhere}
+.draft .why{font-size:.75rem; color:var(--dim); font-style:italic}
+.draft .row{display:flex; align-items:center; gap:8px}
+.draft .copy{
+  padding:5px 12px; border-radius:4px; border:1px solid var(--stroke); background:transparent;
+  color:var(--ink); font-family:'Space Grotesk'; font-weight:600; font-size:.75rem; cursor:pointer;
+}
+.draft .copy:hover{border-color:var(--neon); color:var(--neon-ink)}
+.draft .copy.copied{background:var(--ok); color:var(--void); border-color:var(--ok)}
+.draft .use{
+  padding:5px 12px; border-radius:4px; border:1px solid var(--stroke); background:transparent;
+  color:var(--mute); font-family:'Space Grotesk'; font-weight:600; font-size:.75rem; cursor:pointer;
+}
+.draft .use:hover{border-color:var(--neon); color:var(--neon-ink)}
+
+/* flags panel */
+.flags-section{}
+.flags-cat{margin-bottom:10px}
+.flags-cat h4{
+  margin:0 0 6px; font-family:'Space Grotesk'; font-weight:700; font-size:.7rem;
+  letter-spacing:.2em; text-transform:uppercase;
+}
+.flags-cat.positive h4{color:#7cf0a4}
+.flags-cat.negative h4{color:var(--err)}
+.flags-cat.gate     h4{color:var(--warn)}
+.flag{
+  background:var(--void2); border:1px solid var(--stroke); border-radius:6px;
+  padding:8px 12px; margin-bottom:5px; font-size:.82rem;
+}
+.flag .rule{font-family:'Space Grotesk'; font-weight:600; font-size:.78rem}
+.flag .weight{font-family:'Space Grotesk'; font-weight:700; font-size:.72rem; padding:1px 6px; border-radius:8px;
+  margin-left:6px; background:rgba(255,255,255,.06); color:var(--mute)}
+.flag .weight.pos{background:rgba(74,222,128,.15); color:#7cf0a4}
+.flag .weight.neg{background:rgba(248,113,113,.15); color:var(--err)}
+.flag .evidence{color:var(--mute); font-size:.78rem; margin-top:4px; font-style:italic; overflow-wrap:anywhere}
+
+/* small spinner used during AI calls */
+.spinner{
+  display:inline-block; width:12px; height:12px; border:2px solid transparent;
+  border-top-color:currentColor; border-right-color:currentColor;
+  border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
 /* ---------- utility ---------- */
 [hidden]{display:none !important}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}

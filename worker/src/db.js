@@ -83,11 +83,25 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_flags_contact ON flags(contact_id, created_at DESC)`,
 
+  `CREATE TABLE IF NOT EXISTS ai_usage (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id       INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    purpose          TEXT    NOT NULL CHECK(purpose IN ('draft','scan')),
+    model            TEXT    NOT NULL,
+    input_tokens     INTEGER NOT NULL DEFAULT 0,
+    output_tokens    INTEGER NOT NULL DEFAULT 0,
+    cost_micro_usd   INTEGER NOT NULL DEFAULT 0,
+    latency_ms       INTEGER NOT NULL DEFAULT 0,
+    error            TEXT,
+    created_at       INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at DESC)`,
+
   `CREATE TABLE IF NOT EXISTS schema_meta (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
   )`,
-  `INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '1')`,
+  `INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '2')`,
 ];
 
 // Cache per Worker isolate — cheap gate around the CREATE IF NOT EXISTS batch.

@@ -14,6 +14,12 @@ import {
   currentSession,
 } from './auth.js';
 import { ensureSchema } from './db.js';
+import { callClaude, recordUsage } from './anthropic.js';
+import {
+  DRAFT_SYSTEM_PROMPT, DRAFT_TOOL,
+  SCORE_SYSTEM_PROMPT, SCORE_TOOL,
+  renderContactContext,
+} from './prompts.js';
 
 // ---------- response helpers ----------
 
@@ -430,6 +436,185 @@ async function handleFollowUpsList(req, env, url) {
   return json({ follow_ups: rows.results ?? [] });
 }
 
+// ---------- AI: drafting + scoring + usage ----------
+
+// Load a contact and its recent thread. Used by both drafting and scoring.
+async function loadContactAndThread(env, contactId, limitMessages) {
+  const contact = await env.DB.prepare('SELECT * FROM contacts WHERE id = ?').bind(contactId).first();
+  if (!contact) return { error: err(404, 'contact_not_found') };
+  const msgSql = limitMessages
+    ? `SELECT id, source, direction, body, sent_at, ingested_at
+         FROM messages WHERE contact_id = ?
+         ORDER BY COALESCE(sent_at, ingested_at) DESC, id DESC LIMIT ?`
+    : `SELECT id, source, direction, body, sent_at, ingested_at
+         FROM messages WHERE contact_id = ?
+         ORDER BY COALESCE(sent_at, ingested_at) ASC, id ASC`;
+  const rowsRes = limitMessages
+    ? await env.DB.prepare(msgSql).bind(contactId, limitMessages).all()
+    : await env.DB.prepare(msgSql).bind(contactId).all();
+  let messages = rowsRes.results ?? [];
+  // If we asked for a limited window we grabbed newest-first — reverse to chronological.
+  if (limitMessages) messages = messages.slice().reverse();
+  return { contact, messages };
+}
+
+async function handleDraftsGenerate(req, env, url, params) {
+  await ensureSchema(env);
+  const contactId = Number(params.id);
+  if (!Number.isInteger(contactId)) return err(400, 'bad_id');
+
+  const { contact, messages, error } = await loadContactAndThread(env, contactId, 30);
+  if (error) return error;
+  if (messages.length === 0) {
+    return err(400, 'no_messages', { detail: 'add at least one message before drafting a reply' });
+  }
+  // Refuse to draft a reply if the most recent message is already Ray's — that
+  // means she's already responded and this would just be a redundant call.
+  const last = messages[messages.length - 1];
+  if (last.direction !== 'in') {
+    return err(400, 'last_message_is_hers',
+      { detail: 'last message is already from you; add his reply before drafting' });
+  }
+
+  const userMsg = renderContactContext(contact, messages);
+
+  let usage = { model: 'unknown', input_tokens: 0, output_tokens: 0, cost_micro_usd: 0, latency_ms: 0 };
+  try {
+    const { output, usage: u } = await callClaude(env, {
+      system: DRAFT_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMsg }],
+      tool: DRAFT_TOOL,
+      maxTokens: 1024,
+      temperature: 0.85,
+    });
+    usage = u;
+    await recordUsage(env, contactId, 'draft', usage, null);
+
+    const drafts = output.tool_input?.drafts;
+    const readOfThread = output.tool_input?.read_of_thread;
+    if (!Array.isArray(drafts) || drafts.length === 0) {
+      return err(502, 'draft_shape_bad', { detail: 'model did not return drafts' });
+    }
+    return json({
+      ok: true,
+      drafts,
+      read_of_thread: readOfThread,
+      usage: { cost_micro_usd: usage.cost_micro_usd, latency_ms: usage.latency_ms, model: usage.model },
+    });
+  } catch (e) {
+    await recordUsage(env, contactId, 'draft', usage, e?.message || String(e));
+    return err(502, 'draft_failed', { detail: e?.detail || e?.message || 'unknown' });
+  }
+}
+
+async function handleContactScan(req, env, url, params) {
+  await ensureSchema(env);
+  const contactId = Number(params.id);
+  if (!Number.isInteger(contactId)) return err(400, 'bad_id');
+
+  const { contact, messages, error } = await loadContactAndThread(env, contactId, null);
+  if (error) return error;
+  if (messages.length === 0) {
+    return err(400, 'no_messages', { detail: 'add at least one message before scanning' });
+  }
+
+  const userMsg = renderContactContext(contact, messages);
+
+  let usage = { model: 'unknown', input_tokens: 0, output_tokens: 0, cost_micro_usd: 0, latency_ms: 0 };
+  try {
+    const { output, usage: u } = await callClaude(env, {
+      system: SCORE_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMsg }],
+      tool: SCORE_TOOL,
+      maxTokens: 2048,
+      temperature: 0.2,
+    });
+    usage = u;
+    await recordUsage(env, contactId, 'scan', usage, null);
+
+    const analysis = output.tool_input;
+    if (!analysis || !Array.isArray(analysis.flags)) {
+      return err(502, 'scan_shape_bad', { detail: 'model did not return analysis' });
+    }
+
+    // Replace existing flags for this contact with the fresh scan.
+    // Wrap in a batch so partial state can't leak on error.
+    const now = Date.now();
+    const inserts = analysis.flags
+      .filter(f => f && f.rule_id && f.category && Number.isInteger(f.weight))
+      .map(f => {
+        const msgIdx = Number.isInteger(f.message_index) ? f.message_index : null;
+        const msgRow = msgIdx != null ? messages[msgIdx] : null;
+        return env.DB.prepare(
+          `INSERT INTO flags (contact_id, message_id, rule_id, category, weight, evidence, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          contactId,
+          msgRow ? msgRow.id : null,
+          String(f.rule_id).slice(0, 80),
+          f.category,
+          f.weight,
+          f.evidence ? String(f.evidence).slice(0, 2000) : null,
+          now,
+        );
+      });
+
+    const batch = [env.DB.prepare('DELETE FROM flags WHERE contact_id = ?').bind(contactId)];
+    if (inserts.length) batch.push(...inserts);
+
+    const score = Math.max(-100, Math.min(100, Number(analysis.signal_score) || 0));
+    batch.push(env.DB.prepare(
+      'UPDATE contacts SET signal_score = ?, updated_at = ? WHERE id = ?'
+    ).bind(score, now, contactId));
+
+    await env.DB.batch(batch);
+
+    // Read back what we stored so the UI has fresh ids.
+    const stored = await env.DB.prepare(
+      `SELECT id, message_id, rule_id, category, weight, evidence, created_at
+         FROM flags WHERE contact_id = ? ORDER BY created_at DESC, id DESC`
+    ).bind(contactId).all();
+
+    return json({
+      ok: true,
+      overall_read: analysis.overall_read,
+      recommend_action: analysis.recommend_action,
+      signal_score: score,
+      flags: stored.results ?? [],
+      usage: { cost_micro_usd: usage.cost_micro_usd, latency_ms: usage.latency_ms, model: usage.model },
+    });
+  } catch (e) {
+    await recordUsage(env, contactId, 'scan', usage, e?.message || String(e));
+    return err(502, 'scan_failed', { detail: e?.detail || e?.message || 'unknown' });
+  }
+}
+
+async function handleAiUsage(req, env, url) {
+  await ensureSchema(env);
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const rows = await env.DB.prepare(
+    `SELECT
+       SUM(CASE WHEN created_at >= ? THEN cost_micro_usd ELSE 0 END) AS today_micro,
+       SUM(CASE WHEN created_at >= ? THEN cost_micro_usd ELSE 0 END) AS week_micro,
+       SUM(CASE WHEN created_at >= ? THEN cost_micro_usd ELSE 0 END) AS month_micro,
+       COUNT(*) AS total_calls,
+       SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) AS errors
+     FROM ai_usage`
+  ).bind(now - day, now - 7 * day, now - 30 * day).first();
+
+  const micros = (v) => (Number(v) || 0);
+  const usd = (v) => Math.round(micros(v) / 1000) / 1000; // usd rounded to 3 decimals
+
+  return json({
+    today_usd: usd(rows?.today_micro),
+    week_usd: usd(rows?.week_micro),
+    month_usd: usd(rows?.month_micro),
+    total_calls: rows?.total_calls ?? 0,
+    errors: rows?.errors ?? 0,
+  });
+}
+
 // ---------- route table ----------
 
 const ROUTES = [
@@ -452,6 +637,11 @@ const ROUTES = [
   { method: 'POST',   pattern: '/api/contacts/:id/follow-ups',           handler: handleFollowUpCreate },
   { method: 'PATCH',  pattern: '/api/follow-ups/:id',                    handler: handleFollowUpPatch },
   { method: 'GET',    pattern: '/api/follow-ups',                        handler: handleFollowUpsList },
+
+  // AI (Phase 4)
+  { method: 'POST',   pattern: '/api/contacts/:id/drafts',               handler: handleDraftsGenerate },
+  { method: 'POST',   pattern: '/api/contacts/:id/scan',                 handler: handleContactScan },
+  { method: 'GET',    pattern: '/api/ai-usage',                          handler: handleAiUsage },
 ];
 
 // Match /api/contacts/:id against /api/contacts/42 → { id: "42" }
