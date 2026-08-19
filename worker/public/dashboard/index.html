@@ -9,103 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --void:#07070B; --void2:#0C0C13;
-    --panel:rgba(255,255,255,.035); --stroke:rgba(255,255,255,.10);
-    --ink:#F3EEF2; --mute:#8B8798; --dim:#615D70;
-    --neon:#FF2E7E; --neon-soft:#FF6FA8; --neon-ink:#FFD7E7;
-    --glow:0 0 6px rgba(255,46,126,.9), 0 0 16px rgba(255,46,126,.65), 0 0 34px rgba(255,46,126,.45);
-    --ok:#4ADE80; --warn:#FBBF24; --err:#F87171;
-    --maxw:1080px;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0}
-  body{background:var(--void); color:var(--ink);
-    font-family:'Space Grotesk',system-ui,sans-serif; line-height:1.55; min-height:100vh; overflow-x:hidden}
-  a{color:inherit; text-decoration:none}
-
-  /* atmospheric bg, same as main site but calmer */
-  .bg{position:fixed; inset:0; z-index:0; pointer-events:none}
-  .fog{position:absolute; border-radius:50%; filter:blur(90px); opacity:.35}
-  .fog1{width:60vmax;height:60vmax;top:-24vmax;left:-14vmax;background:radial-gradient(circle,#FF2E7E,transparent 65%)}
-  .fog2{width:44vmax;height:44vmax;bottom:-20vmax;right:-12vmax;background:radial-gradient(circle,#7A1F4E,transparent 68%);opacity:.5}
-  .grid{position:absolute; inset:0; opacity:.04;
-    background-image:linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px);
-    background-size:64px 64px; mask-image:radial-gradient(circle at 50% 20%,#000 40%,transparent 85%)}
-
-  .wrap{position:relative; z-index:2; max-width:var(--maxw); margin:0 auto; padding:0 24px}
-
-  /* ---- LOGIN ---- */
-  .login{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px}
-  .login-card{width:100%; max-width:400px; background:rgba(12,12,19,.92); border:1px solid var(--stroke);
-    border-radius:20px; padding:38px 32px; box-shadow:0 20px 60px rgba(0,0,0,.4)}
-  .login-mark{text-align:center; margin-bottom:22px}
-  .login-mark .brand{font-family:'Unbounded'; font-weight:700; font-size:1.35rem; letter-spacing:-.02em;
-    color:#FFF3F8; text-shadow:var(--glow)}
-  .login-mark .sub{font-family:'Space Grotesk'; font-weight:500; letter-spacing:.5em; font-size:.7rem;
-    text-transform:uppercase; color:var(--neon-ink); margin-top:8px}
-  .login-card h2{font-family:'Unbounded'; font-weight:700; font-size:1.05rem; letter-spacing:-.01em;
-    margin:0 0 4px; text-align:center}
-  .login-card p.hint{color:var(--mute); font-size:.86rem; text-align:center; margin:0 0 22px}
-  .login-form{display:flex; flex-direction:column; gap:12px}
-  .login-form input{padding:14px 16px; border-radius:6px; border:1px solid var(--stroke);
-    background:rgba(0,0,0,.4); color:#fff; font-family:'Space Grotesk'; font-size:1rem}
-  .login-form input::placeholder{color:var(--dim)}
-  .login-form input:focus{outline:none; border-color:var(--neon); box-shadow:0 0 0 3px rgba(255,46,126,.15)}
-  .btn{display:inline-flex; align-items:center; justify-content:center; gap:9px; cursor:pointer;
-    font-family:'Space Grotesk'; font-weight:700; font-size:.98rem; padding:13px 22px; border-radius:4px;
-    border:1px solid transparent; transition:.18s; width:100%}
-  .btn:focus-visible{outline:2px solid var(--neon); outline-offset:3px}
-  .btn-primary{color:var(--void); background:var(--neon); box-shadow:var(--glow)}
-  .btn-primary:hover{background:var(--neon-soft); transform:translateY(-1px)}
-  .btn-primary:disabled{opacity:.6; cursor:wait; transform:none}
-  .btn-ghost{color:var(--ink); border-color:var(--stroke); background:transparent; width:auto; padding:9px 16px; font-size:.85rem}
-  .btn-ghost:hover{border-color:var(--neon); color:var(--neon-ink)}
-  .login-err{color:var(--err); font-size:.88rem; text-align:center; min-height:1.4em; margin-top:4px}
-
-  /* ---- AUTHED SHELL ---- */
-  .app{display:none; min-height:100vh; flex-direction:column}
-  .app.on{display:flex}
-  .topbar{display:flex; align-items:center; justify-content:space-between; padding:18px 0;
-    border-bottom:1px solid var(--stroke)}
-  .topbar .brand{font-family:'Unbounded'; font-weight:700; font-size:1rem; letter-spacing:-.01em;
-    color:#FFF3F8; text-shadow:var(--glow)}
-  .topbar .brand .thin{color:var(--mute); font-weight:500; letter-spacing:.3em; font-size:.72rem; margin-left:10px;
-    text-transform:uppercase}
-  .topbar .actions{display:flex; align-items:center; gap:10px}
-  .sess{font-family:'Space Grotesk'; font-size:.75rem; color:var(--dim); letter-spacing:.05em}
-
-  .stage{flex:1; padding:56px 0}
-  .stage-inner{max-width:640px; margin:0 auto; text-align:center}
-  .badge-pre{display:inline-block; padding:5px 12px; border:1px solid var(--neon); border-radius:20px;
-    color:var(--neon-ink); font-size:.7rem; font-family:'Space Grotesk'; font-weight:700; letter-spacing:.24em;
-    text-transform:uppercase; box-shadow:var(--glow); margin-bottom:22px}
-  .stage h1{font-family:'Unbounded'; font-weight:700; font-size:clamp(1.5rem,3.6vw,2rem); letter-spacing:-.02em;
-    margin:0 0 14px}
-  .stage p{color:var(--mute); font-size:1rem; margin:0 auto 22px; max-width:520px}
-  .phases{display:grid; grid-template-columns:1fr; gap:1px; background:var(--stroke); border:1px solid var(--stroke);
-    border-radius:14px; overflow:hidden; margin-top:32px; text-align:left}
-  .ph{background:var(--void2); padding:18px 22px; display:flex; align-items:center; gap:14px}
-  .ph .n{font-family:'Space Grotesk'; font-weight:700; font-size:.72rem; letter-spacing:.25em; color:var(--neon);
-    text-transform:uppercase; min-width:78px}
-  .ph .t{font-family:'Space Grotesk'; font-weight:600; font-size:.98rem}
-  .ph .s{color:var(--mute); font-size:.82rem; margin-left:auto}
-  .ph.done .s{color:var(--ok)}
-  .ph.now{background:linear-gradient(180deg,rgba(255,46,126,.08),transparent)}
-  .ph.now .s{color:var(--neon-ink)}
-
-  footer{padding:22px 0 32px; text-align:center; color:var(--dim); font-size:.74rem}
-
-  @media (max-width:520px){
-    .stage{padding:32px 0}
-    .ph{flex-wrap:wrap}
-    .ph .s{margin-left:0; margin-top:4px; width:100%}
-  }
-</style>
+<link rel="stylesheet" href="/dashboard/dashboard.css">
 </head>
 <body>
-<div class="bg" aria-hidden="true"><span class="fog fog1"></span><span class="fog fog2"></span><span class="grid"></span></div>
+<div class="bg" aria-hidden="true"><span class="fog fog1"></span><span class="fog fog2"></span></div>
 
 <!-- ============ LOGIN VIEW ============ -->
 <section class="login" id="loginView">
@@ -127,139 +34,84 @@
 
 <!-- ============ AUTHED SHELL ============ -->
 <div class="app" id="appView">
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">RAY · DASHBOARD<span class="thin">Private</span></div>
-      <div class="actions">
-        <span class="sess" id="sess"></span>
-        <button class="btn btn-ghost" id="logoutBtn" type="button">Log out</button>
-      </div>
+  <!-- top bar -->
+  <header class="topbar">
+    <div class="brand">RAY · DASHBOARD<span class="thin">Private</span></div>
+    <nav class="filters" id="filters" role="tablist">
+      <button class="chip on" data-bucket="all"    role="tab" aria-selected="true">All <span class="count" id="c-all">0</span></button>
+      <button class="chip"    data-bucket="dating" role="tab" aria-selected="false">Dating <span class="count" id="c-dating">0</span></button>
+      <button class="chip"    data-bucket="fan"    role="tab" aria-selected="false">Fans <span class="count" id="c-fan">0</span></button>
+    </nav>
+    <div class="actions">
+      <button class="btn btn-primary btn-sm" id="newContactBtn" type="button">+ New contact</button>
+      <span class="sess" id="sess"></span>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn" type="button">Log out</button>
     </div>
+  </header>
 
-    <div class="stage">
-      <div class="stage-inner">
-        <div class="badge-pre">Phase 1 · Live</div>
-        <h1>You're in.</h1>
-        <p>The auth layer, the private route, and the deploy pipeline all work. The inbox, contacts, scoring, and the browser extension are on the way — each phase will show up here as it lands.</p>
-
-        <div class="phases">
-          <div class="ph done">
-            <span class="n">Phase 1</span>
-            <span class="t">Migration &amp; auth</span>
-            <span class="s">Complete</span>
-          </div>
-          <div class="ph now">
-            <span class="n">Phase 2</span>
-            <span class="t">Data + unified inbox</span>
-            <span class="s">Next up</span>
-          </div>
-          <div class="ph">
-            <span class="n">Phase 3</span>
-            <span class="t">Browser extension (all 6 platforms)</span>
-            <span class="s">Queued</span>
-          </div>
-          <div class="ph">
-            <span class="n">Phase 4</span>
-            <span class="t">Reply drafting, scoring, red-flag detection</span>
-            <span class="s">Queued</span>
-          </div>
-          <div class="ph">
-            <span class="n">Phase 5</span>
-            <span class="t">Screenshot vault, digest, analytics</span>
-            <span class="s">Queued</span>
-          </div>
+  <!-- two-pane body -->
+  <main class="body">
+    <!-- LEFT: search + contact list -->
+    <aside class="sidebar">
+      <div class="search-wrap">
+        <input type="search" id="search" placeholder="Search name, notes, handle…" autocomplete="off">
+      </div>
+      <div class="contact-list" id="contactList" role="list">
+        <div class="empty-list" id="emptyList">
+          <p>No contacts yet.</p>
+          <button class="btn btn-primary btn-sm" id="emptyListAdd" type="button">+ Add your first contact</button>
         </div>
       </div>
-    </div>
+    </aside>
 
-    <footer>Owner-only. Not indexed. Not shareable.</footer>
-  </div>
+    <!-- RIGHT: detail -->
+    <section class="detail" id="detail">
+      <div class="detail-empty" id="detailEmpty">
+        <div class="badge-pre">Ready</div>
+        <h1>Pick a contact</h1>
+        <p>Select someone from the left, or use <b>+ New contact</b> up top to add one. Every field autosaves as you change it.</p>
+      </div>
+      <div class="detail-body" id="detailBody" hidden>
+        <!-- populated by JS -->
+      </div>
+    </section>
+  </main>
 </div>
 
-<script>
-  (function(){
-    var loginView = document.getElementById('loginView');
-    var appView   = document.getElementById('appView');
-    var loginForm = document.getElementById('loginForm');
-    var pw        = document.getElementById('pw');
-    var loginBtn  = document.getElementById('loginBtn');
-    var loginErr  = document.getElementById('loginErr');
-    var logoutBtn = document.getElementById('logoutBtn');
-    var sess      = document.getElementById('sess');
+<!-- ============ NEW-CONTACT MODAL ============ -->
+<div class="modal" id="modal" hidden aria-modal="true" role="dialog" aria-labelledby="modalTitle">
+  <div class="modal-backdrop" data-close></div>
+  <form class="modal-card" id="modalForm" autocomplete="off">
+    <h3 id="modalTitle">New contact</h3>
+    <label>Name / how you refer to them <span class="req">*</span>
+      <input type="text" name="display_name" required maxlength="200" placeholder="e.g. Diego (Tinder blue jacket)">
+    </label>
+    <label>Bucket <span class="req">*</span>
+      <select name="bucket" required>
+        <option value="dating">Dating</option>
+        <option value="fan">Fan</option>
+      </select>
+    </label>
+    <fieldset>
+      <legend>Handles (leave blank if not on that platform)</legend>
+      <label>Instagram   <input type="text" name="handle_ig"      maxlength="200" placeholder="@handle"></label>
+      <label>Tinder      <input type="text" name="handle_tinder"  maxlength="200" placeholder="name / label"></label>
+      <label>Bumble      <input type="text" name="handle_bumble"  maxlength="200" placeholder="name / label"></label>
+      <label>Fetlife     <input type="text" name="handle_fetlife" maxlength="200" placeholder="username"></label>
+      <label>TikTok      <input type="text" name="handle_tiktok"  maxlength="200" placeholder="@handle"></label>
+      <label>X (Twitter) <input type="text" name="handle_x"       maxlength="200" placeholder="@handle"></label>
+    </fieldset>
+    <div class="modal-err" id="modalErr" role="alert" aria-live="polite"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary btn-sm" type="submit" id="modalSubmit">Create</button>
+    </div>
+  </form>
+</div>
 
-    function show(view){
-      if(view === 'login'){
-        appView.classList.remove('on');
-        loginView.style.display = 'flex';
-        setTimeout(function(){ pw.focus(); }, 30);
-      } else {
-        loginView.style.display = 'none';
-        appView.classList.add('on');
-      }
-    }
+<!-- toasts -->
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
 
-    function fmtRemaining(expMs){
-      var ms = expMs - Date.now();
-      if(ms <= 0) return 'session expired';
-      var hrs = Math.floor(ms / 3600000);
-      var mins = Math.floor((ms % 3600000) / 60000);
-      if(hrs >= 24){
-        var days = Math.floor(hrs / 24);
-        return 'session ' + days + 'd ' + (hrs % 24) + 'h left';
-      }
-      return 'session ' + hrs + 'h ' + mins + 'm left';
-    }
-
-    async function checkMe(){
-      try {
-        var r = await fetch('/api/me', { credentials: 'same-origin' });
-        var j = await r.json();
-        if(j.authed){
-          sess.textContent = fmtRemaining(j.session.expires);
-          show('app');
-        } else {
-          show('login');
-        }
-      } catch(e) {
-        show('login');
-      }
-    }
-
-    loginForm.addEventListener('submit', async function(e){
-      e.preventDefault();
-      loginErr.textContent = '';
-      loginBtn.disabled = true;
-      loginBtn.textContent = 'Signing in…';
-      try {
-        var r = await fetch('/api/login', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ password: pw.value }),
-        });
-        if(r.ok){
-          pw.value = '';
-          await checkMe();
-        } else if(r.status === 401){
-          loginErr.textContent = 'Wrong password.';
-        } else {
-          loginErr.textContent = 'Something went wrong. Try again.';
-        }
-      } catch(err) {
-        loginErr.textContent = 'Network error.';
-      } finally {
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Enter';
-      }
-    });
-
-    logoutBtn.addEventListener('click', async function(){
-      try { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); } catch(e){}
-      show('login');
-    });
-
-    checkMe();
-  })();
-</script>
+<script src="/dashboard/dashboard.js" defer></script>
 </body>
 </html>

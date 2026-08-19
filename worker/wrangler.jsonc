@@ -19,7 +19,18 @@
   // are set via the Cloudflare dashboard or `wrangler secret put`, never in this file.
   "vars": {
     "SESSION_MAX_AGE_HOURS": "168"
-  }
+  },
+
+  // D1 (SQLite on the edge). Schema in worker/migrations/0001_init.sql is
+  // applied on demand by src/db.js on first DB access — no manual migration
+  // step required.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rayplayz-db",
+      "database_id": "75426423-8a86-4888-8dfa-e145d7faaf50"
+    }
+  ]
 
   // Custom domain routes are attached from the Cloudflare dashboard once DNS is live:
   //   rayplayzz.com/*   →  rayplayz
