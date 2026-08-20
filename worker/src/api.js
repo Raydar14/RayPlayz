@@ -14,6 +14,12 @@ import {
   currentSession,
 } from './auth.js';
 import { ensureSchema } from './db.js';
+import { callClaude, recordUsage } from './anthropic.js';
+import {
+  DRAFT_SYSTEM_PROMPT, DRAFT_TOOL,
+  SCORE_SYSTEM_PROMPT, SCORE_TOOL,
+  renderContactContext,
+} from './prompts.js';
 
 // ---------- response helpers ----------
 
@@ -100,6 +106,51 @@ async function tryValidate(fn) {
 async function requireSession(req, env) {
   const s = await currentSession(req, env);
   return s ? { session: s } : { response: err(401, 'unauthenticated') };
+}
+
+// ---------- extension token helpers (Phase 3) ----------
+
+async function sha256Hex(input) {
+  const bytes = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest('SHA-256', bytes);
+  const arr = new Uint8Array(buf);
+  let hex = '';
+  for (let i = 0; i < arr.length; i++) hex += arr[i].toString(16).padStart(2, '0');
+  return hex;
+}
+
+function generateTokenString() {
+  // 32 random bytes → url-safe token. Prefix so tokens are recognizable
+  // and can be pattern-scrubbed from logs.
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // no 0/1/o/i to avoid confusion
+  let out = '';
+  for (const b of bytes) out += chars[b % chars.length];
+  return 'rpx_' + out;
+}
+
+/**
+ * Look up an active extension token by the Authorization header.
+ * Updates last_used_at on success. Returns null if not present or revoked.
+ */
+async function currentExtensionToken(req, env) {
+  const auth = req.headers.get('authorization') || '';
+  const m = auth.match(/^Bearer\s+(rpx_[a-z0-9]{32,64})$/i);
+  if (!m) return null;
+  const hash = await sha256Hex(m[1]);
+  const row = await env.DB.prepare(
+    'SELECT id, created_at, revoked_at FROM extension_tokens WHERE token_hash = ?'
+  ).bind(hash).first();
+  if (!row || row.revoked_at) return null;
+  // Fire-and-forget last_used_at update; failure shouldn't block ingest.
+  env.DB.prepare('UPDATE extension_tokens SET last_used_at = ? WHERE id = ?')
+    .bind(Date.now(), row.id).run().catch(() => {});
+  return row;
+}
+
+async function requireExtensionToken(req, env) {
+  const t = await currentExtensionToken(req, env);
+  return t ? { token: t } : { response: err(401, 'unauthenticated', { detail: 'extension token missing or revoked' }) };
 }
 
 async function handleLogin(req, env) {
@@ -430,6 +481,333 @@ async function handleFollowUpsList(req, env, url) {
   return json({ follow_ups: rows.results ?? [] });
 }
 
+// ---------- AI: drafting + scoring + usage ----------
+
+// Load a contact and its recent thread. Used by both drafting and scoring.
+async function loadContactAndThread(env, contactId, limitMessages) {
+  const contact = await env.DB.prepare('SELECT * FROM contacts WHERE id = ?').bind(contactId).first();
+  if (!contact) return { error: err(404, 'contact_not_found') };
+  const msgSql = limitMessages
+    ? `SELECT id, source, direction, body, sent_at, ingested_at
+         FROM messages WHERE contact_id = ?
+         ORDER BY COALESCE(sent_at, ingested_at) DESC, id DESC LIMIT ?`
+    : `SELECT id, source, direction, body, sent_at, ingested_at
+         FROM messages WHERE contact_id = ?
+         ORDER BY COALESCE(sent_at, ingested_at) ASC, id ASC`;
+  const rowsRes = limitMessages
+    ? await env.DB.prepare(msgSql).bind(contactId, limitMessages).all()
+    : await env.DB.prepare(msgSql).bind(contactId).all();
+  let messages = rowsRes.results ?? [];
+  // If we asked for a limited window we grabbed newest-first — reverse to chronological.
+  if (limitMessages) messages = messages.slice().reverse();
+  return { contact, messages };
+}
+
+async function handleDraftsGenerate(req, env, url, params) {
+  await ensureSchema(env);
+  const contactId = Number(params.id);
+  if (!Number.isInteger(contactId)) return err(400, 'bad_id');
+
+  const { contact, messages, error } = await loadContactAndThread(env, contactId, 30);
+  if (error) return error;
+  if (messages.length === 0) {
+    return err(400, 'no_messages', { detail: 'add at least one message before drafting a reply' });
+  }
+  // Refuse to draft a reply if the most recent message is already Ray's — that
+  // means she's already responded and this would just be a redundant call.
+  const last = messages[messages.length - 1];
+  if (last.direction !== 'in') {
+    return err(400, 'last_message_is_hers',
+      { detail: 'last message is already from you; add his reply before drafting' });
+  }
+
+  const userMsg = renderContactContext(contact, messages);
+
+  let usage = { model: 'unknown', input_tokens: 0, output_tokens: 0, cost_micro_usd: 0, latency_ms: 0 };
+  try {
+    const { output, usage: u } = await callClaude(env, {
+      system: DRAFT_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMsg }],
+      tool: DRAFT_TOOL,
+      maxTokens: 1024,
+      temperature: 0.85,
+    });
+    usage = u;
+    await recordUsage(env, contactId, 'draft', usage, null);
+
+    const drafts = output.tool_input?.drafts;
+    const readOfThread = output.tool_input?.read_of_thread;
+    if (!Array.isArray(drafts) || drafts.length === 0) {
+      return err(502, 'draft_shape_bad', { detail: 'model did not return drafts' });
+    }
+    return json({
+      ok: true,
+      drafts,
+      read_of_thread: readOfThread,
+      usage: { cost_micro_usd: usage.cost_micro_usd, latency_ms: usage.latency_ms, model: usage.model },
+    });
+  } catch (e) {
+    await recordUsage(env, contactId, 'draft', usage, e?.message || String(e));
+    return err(502, 'draft_failed', { detail: e?.detail || e?.message || 'unknown' });
+  }
+}
+
+async function handleContactScan(req, env, url, params) {
+  await ensureSchema(env);
+  const contactId = Number(params.id);
+  if (!Number.isInteger(contactId)) return err(400, 'bad_id');
+
+  const { contact, messages, error } = await loadContactAndThread(env, contactId, null);
+  if (error) return error;
+  if (messages.length === 0) {
+    return err(400, 'no_messages', { detail: 'add at least one message before scanning' });
+  }
+
+  const userMsg = renderContactContext(contact, messages);
+
+  let usage = { model: 'unknown', input_tokens: 0, output_tokens: 0, cost_micro_usd: 0, latency_ms: 0 };
+  try {
+    const { output, usage: u } = await callClaude(env, {
+      system: SCORE_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMsg }],
+      tool: SCORE_TOOL,
+      maxTokens: 2048,
+      temperature: 0.2,
+    });
+    usage = u;
+    await recordUsage(env, contactId, 'scan', usage, null);
+
+    const analysis = output.tool_input;
+    if (!analysis || !Array.isArray(analysis.flags)) {
+      return err(502, 'scan_shape_bad', { detail: 'model did not return analysis' });
+    }
+
+    // Replace existing flags for this contact with the fresh scan.
+    // Wrap in a batch so partial state can't leak on error.
+    const now = Date.now();
+    const inserts = analysis.flags
+      .filter(f => f && f.rule_id && f.category && Number.isInteger(f.weight))
+      .map(f => {
+        const msgIdx = Number.isInteger(f.message_index) ? f.message_index : null;
+        const msgRow = msgIdx != null ? messages[msgIdx] : null;
+        return env.DB.prepare(
+          `INSERT INTO flags (contact_id, message_id, rule_id, category, weight, evidence, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          contactId,
+          msgRow ? msgRow.id : null,
+          String(f.rule_id).slice(0, 80),
+          f.category,
+          f.weight,
+          f.evidence ? String(f.evidence).slice(0, 2000) : null,
+          now,
+        );
+      });
+
+    const batch = [env.DB.prepare('DELETE FROM flags WHERE contact_id = ?').bind(contactId)];
+    if (inserts.length) batch.push(...inserts);
+
+    const score = Math.max(-100, Math.min(100, Number(analysis.signal_score) || 0));
+    batch.push(env.DB.prepare(
+      'UPDATE contacts SET signal_score = ?, updated_at = ? WHERE id = ?'
+    ).bind(score, now, contactId));
+
+    await env.DB.batch(batch);
+
+    // Read back what we stored so the UI has fresh ids.
+    const stored = await env.DB.prepare(
+      `SELECT id, message_id, rule_id, category, weight, evidence, created_at
+         FROM flags WHERE contact_id = ? ORDER BY created_at DESC, id DESC`
+    ).bind(contactId).all();
+
+    return json({
+      ok: true,
+      overall_read: analysis.overall_read,
+      recommend_action: analysis.recommend_action,
+      signal_score: score,
+      flags: stored.results ?? [],
+      usage: { cost_micro_usd: usage.cost_micro_usd, latency_ms: usage.latency_ms, model: usage.model },
+    });
+  } catch (e) {
+    await recordUsage(env, contactId, 'scan', usage, e?.message || String(e));
+    return err(502, 'scan_failed', { detail: e?.detail || e?.message || 'unknown' });
+  }
+}
+
+async function handleAiUsage(req, env, url) {
+  await ensureSchema(env);
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const rows = await env.DB.prepare(
+    `SELECT
+       SUM(CASE WHEN created_at >= ? THEN cost_micro_usd ELSE 0 END) AS today_micro,
+       SUM(CASE WHEN created_at >= ? THEN cost_micro_usd ELSE 0 END) AS week_micro,
+       SUM(CASE WHEN created_at >= ? THEN cost_micro_usd ELSE 0 END) AS month_micro,
+       COUNT(*) AS total_calls,
+       SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) AS errors
+     FROM ai_usage`
+  ).bind(now - day, now - 7 * day, now - 30 * day).first();
+
+  const micros = (v) => (Number(v) || 0);
+  const usd = (v) => Math.round(micros(v) / 1000) / 1000; // usd rounded to 3 decimals
+
+  return json({
+    today_usd: usd(rows?.today_micro),
+    week_usd: usd(rows?.week_micro),
+    month_usd: usd(rows?.month_micro),
+    total_calls: rows?.total_calls ?? 0,
+    errors: rows?.errors ?? 0,
+  });
+}
+
+// ---------- Phase 3: extension token management (session-gated) ----------
+
+async function handleExtensionTokenInfo(req, env) {
+  await ensureSchema(env);
+  const row = await env.DB.prepare(
+    `SELECT id, label, created_at, last_used_at FROM extension_tokens
+       WHERE revoked_at IS NULL ORDER BY created_at DESC LIMIT 1`
+  ).first();
+  return json({
+    active: !!row,
+    token: row ? {
+      id: row.id,
+      label: row.label,
+      created_at: row.created_at,
+      last_used_at: row.last_used_at,
+    } : null,
+  });
+}
+
+async function handleExtensionTokenRotate(req, env) {
+  await ensureSchema(env);
+  let body = {};
+  try { body = await req.json(); } catch { /* body is optional */ }
+  const label = typeof body?.label === 'string' ? body.label.slice(0, 80) : null;
+
+  const now = Date.now();
+  // Revoke ALL currently-active tokens so exactly one token is live at a time.
+  await env.DB.prepare(
+    'UPDATE extension_tokens SET revoked_at = ? WHERE revoked_at IS NULL'
+  ).bind(now).run();
+
+  const plaintext = generateTokenString();
+  const hash = await sha256Hex(plaintext);
+  const res = await env.DB.prepare(
+    'INSERT INTO extension_tokens (token_hash, label, created_at) VALUES (?, ?, ?)'
+  ).bind(hash, label, now).run();
+
+  return json({
+    ok: true,
+    id: res.meta?.last_row_id,
+    token: plaintext,
+    warning: 'This token is shown once. Paste it into the extension now — you cannot see it again.',
+  });
+}
+
+async function handleExtensionTokenRevoke(req, env) {
+  await ensureSchema(env);
+  const now = Date.now();
+  const res = await env.DB.prepare(
+    'UPDATE extension_tokens SET revoked_at = ? WHERE revoked_at IS NULL'
+  ).bind(now).run();
+  return json({ ok: true, revoked: res.meta?.changes ?? 0 });
+}
+
+// ---------- Phase 3: ingest endpoint (extension-token gated) ----------
+
+const HANDLE_COL_FOR_SOURCE = {
+  ig: 'handle_ig', tinder: 'handle_tinder', bumble: 'handle_bumble',
+  fetlife: 'handle_fetlife', tiktok: 'handle_tiktok', x: 'handle_x',
+};
+
+function normalizeHandle(s) {
+  if (typeof s !== 'string') return null;
+  return s.trim().replace(/^@+/, '').toLowerCase().slice(0, 200) || null;
+}
+
+async function contentHashFor(source, direction, body, sentAt) {
+  // Round sent_at to the nearest 30s to absorb small clock differences
+  // between captures of the same message. Absent times become empty.
+  const t = Number.isFinite(sentAt) ? Math.round(sentAt / 30_000) : '';
+  return await sha256Hex(`${source}|${direction}|${t}|${body}`);
+}
+
+async function handleIngest(req, env) {
+  await ensureSchema(env);
+  let body;
+  try { body = await req.json(); } catch { return err(400, 'bad_request'); }
+
+  const source = body?.source;
+  if (!SOURCES.includes(source)) return err(400, 'bad_source');
+
+  const contactInput = body?.contact || {};
+  const externalId = normalizeHandle(contactInput.external_id);
+  if (!externalId) return err(400, 'contact_external_id_required');
+
+  const displayName = (typeof contactInput.display_name === 'string' && contactInput.display_name.trim())
+    ? contactInput.display_name.trim().slice(0, 200)
+    : externalId;
+  const bucket = BUCKETS.includes(contactInput.bucket) ? contactInput.bucket : 'dating';
+
+  const messagesInput = Array.isArray(body?.messages) ? body.messages : [];
+  if (messagesInput.length === 0) return err(400, 'no_messages');
+  if (messagesInput.length > 500) return err(400, 'too_many_messages');
+
+  const handleCol = HANDLE_COL_FOR_SOURCE[source];
+  // Find-or-create contact. Match on the platform's handle column so a
+  // second capture of the same thread lands on the same contact row.
+  let contact = await env.DB.prepare(
+    `SELECT id, display_name FROM contacts WHERE ${handleCol} = ? LIMIT 1`
+  ).bind(externalId).first();
+
+  let contactCreated = false;
+  if (!contact) {
+    const ins = await env.DB.prepare(
+      `INSERT INTO contacts (display_name, bucket, ${handleCol}) VALUES (?, ?, ?)`
+    ).bind(displayName, bucket, externalId).run();
+    contact = { id: ins.meta?.last_row_id, display_name: displayName };
+    contactCreated = true;
+  }
+
+  // Build insert statements. We rely on UNIQUE partial indexes on
+  // (contact_id, source, external_id) and (contact_id, source, content_hash)
+  // for idempotency, so re-ingesting the same thread is a no-op.
+  let added = 0, existing = 0, rejected = 0;
+  for (const m of messagesInput) {
+    if (!DIRECTIONS.includes(m?.direction)) { rejected++; continue; }
+    if (typeof m?.body !== 'string' || m.body.length === 0 || m.body.length > 100000) { rejected++; continue; }
+    const sentAt = Number.isFinite(m?.sent_at) ? Number(m.sent_at) : null;
+    const extId = (typeof m?.external_id === 'string' && m.external_id)
+      ? m.external_id.slice(0, 200) : null;
+    const contentHash = await contentHashFor(source, m.direction, m.body, sentAt);
+    try {
+      const res = await env.DB.prepare(
+        `INSERT INTO messages
+           (contact_id, source, direction, body, sent_at, external_id, content_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).bind(contact.id, source, m.direction, m.body, sentAt, extId, contentHash).run();
+      if (res.meta?.changes) added++;
+      else existing++;
+    } catch (e) {
+      // UNIQUE constraint = duplicate. Anything else is a real error.
+      if (String(e?.message || e).toLowerCase().includes('unique')) existing++;
+      else { rejected++; console.error('ingest insert failed:', e?.message || e); }
+    }
+  }
+
+  if (added > 0) {
+    await env.DB.prepare('UPDATE contacts SET updated_at = ? WHERE id = ?')
+      .bind(Date.now(), contact.id).run();
+  }
+
+  return json({
+    ok: true,
+    contact: { id: contact.id, created: contactCreated, display_name: contact.display_name },
+    added, existing, rejected,
+  });
+}
+
 // ---------- route table ----------
 
 const ROUTES = [
@@ -452,6 +830,17 @@ const ROUTES = [
   { method: 'POST',   pattern: '/api/contacts/:id/follow-ups',           handler: handleFollowUpCreate },
   { method: 'PATCH',  pattern: '/api/follow-ups/:id',                    handler: handleFollowUpPatch },
   { method: 'GET',    pattern: '/api/follow-ups',                        handler: handleFollowUpsList },
+
+  // AI (Phase 4)
+  { method: 'POST',   pattern: '/api/contacts/:id/drafts',               handler: handleDraftsGenerate },
+  { method: 'POST',   pattern: '/api/contacts/:id/scan',                 handler: handleContactScan },
+  { method: 'GET',    pattern: '/api/ai-usage',                          handler: handleAiUsage },
+
+  // Extension (Phase 3)
+  { method: 'GET',    pattern: '/api/settings/extension-token',          handler: handleExtensionTokenInfo },
+  { method: 'POST',   pattern: '/api/settings/extension-token/rotate',   handler: handleExtensionTokenRotate },
+  { method: 'POST',   pattern: '/api/settings/extension-token/revoke',   handler: handleExtensionTokenRevoke },
+  { method: 'POST',   pattern: '/api/ingest',                            handler: handleIngest, bearerAuth: true },
 ];
 
 // Match /api/contacts/:id against /api/contacts/42 → { id: "42" }
@@ -472,20 +861,53 @@ function matchRoute(method, path) {
   return null;
 }
 
+// Chrome extensions POST from a chrome-extension:// origin, which needs
+// CORS. We open it only on the ingest endpoint (which is Bearer-token
+// gated anyway). Session-cookie endpoints stay same-origin only.
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-max-age': '86400',
+};
+
+function withCors(resp) {
+  const headers = new Headers(resp.headers);
+  for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
+  return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers });
+}
+
+// Any route with bearerAuth also allows a CORS preflight response so the
+// extension's cross-origin POST can proceed.
+function isBearerRoute(method, path) {
+  const hit = matchRoute(method, path);
+  return !!(hit && hit.route.bearerAuth);
+}
+
 export async function handleApi(req, env, url) {
+  // CORS preflight for bearer-auth routes.
+  if (req.method === 'OPTIONS' && isBearerRoute('POST', url.pathname)) {
+    return withCors(new Response(null, { status: 204 }));
+  }
+
   const hit = matchRoute(req.method, url.pathname);
   if (!hit) return err(404, 'not_found');
 
-  if (!hit.route.public) {
+  if (hit.route.bearerAuth) {
+    const auth = await requireExtensionToken(req, env);
+    if (auth.response) return withCors(auth.response);
+  } else if (!hit.route.public) {
     const auth = await requireSession(req, env);
     if (auth.response) return auth.response;
   }
 
   try {
-    return await hit.route.handler(req, env, url, hit.params);
+    const resp = await hit.route.handler(req, env, url, hit.params);
+    return hit.route.bearerAuth ? withCors(resp) : resp;
   } catch (e) {
     // Log to Worker tail (not exposed to the client).
     console.error('api error:', e?.stack || e?.message || e);
-    return err(500, 'internal_error');
+    const resp = err(500, 'internal_error');
+    return hit.route.bearerAuth ? withCors(resp) : resp;
   }
 }

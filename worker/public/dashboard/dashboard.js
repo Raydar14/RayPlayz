@@ -121,9 +121,99 @@
     showLogin();
   });
 
+  // -------------------- settings (extension token) --------------------
+
+  const settingsModal = $('#settingsModal');
+  $('#settingsBtn').addEventListener('click', openSettings);
+  settingsModal.addEventListener('click', (e) => { if (e.target.matches('[data-close]')) closeSettings(); });
+
+  async function openSettings() {
+    $('#tokenPlaintextBox').hidden = true;
+    $('#tokenPlaintext').textContent = '';
+    settingsModal.hidden = false;
+    await loadTokenStatus();
+  }
+  function closeSettings() { settingsModal.hidden = true; }
+
+  async function loadTokenStatus() {
+    const status = $('#tokenStatus');
+    const revokeBtn = $('#revokeTokenBtn');
+    status.textContent = 'Loading…';
+    try {
+      const r = await GET('/api/settings/extension-token');
+      if (r.active) {
+        const created = new Date(r.token.created_at);
+        const lastUsed = r.token.last_used_at ? new Date(r.token.last_used_at) : null;
+        status.innerHTML =
+          `<span style="color:#7cf0a4">● Active</span> · created ${created.toLocaleDateString()} · ` +
+          (lastUsed ? `last used ${lastUsed.toLocaleString()}` : 'never used yet');
+        revokeBtn.hidden = false;
+      } else {
+        status.innerHTML = '<span style="color:var(--dim)">○ No token generated yet</span>';
+        revokeBtn.hidden = true;
+      }
+    } catch (e) {
+      status.textContent = 'Failed to load: ' + (e.detail || e.message);
+    }
+  }
+
+  $('#rotateTokenBtn').addEventListener('click', async () => {
+    const btn = $('#rotateTokenBtn');
+    if (!confirm('Generate a new token? Any existing extension token will stop working immediately.')) return;
+    btn.disabled = true;
+    try {
+      const r = await POST('/api/settings/extension-token/rotate', {});
+      $('#tokenPlaintext').textContent = r.token;
+      $('#tokenPlaintextBox').hidden = false;
+      await loadTokenStatus();
+    } catch (e) {
+      toast('Failed: ' + (e.detail || e.message), 'err');
+    } finally { btn.disabled = false; }
+  });
+
+  $('#revokeTokenBtn').addEventListener('click', async () => {
+    if (!confirm('Revoke the active extension token? The extension will stop working until a new one is generated.')) return;
+    try {
+      await POST('/api/settings/extension-token/revoke', {});
+      $('#tokenPlaintextBox').hidden = true;
+      await loadTokenStatus();
+    } catch (e) { toast('Failed: ' + (e.detail || e.message), 'err'); }
+  });
+
+  $('#copyTokenBtn').addEventListener('click', async () => {
+    const t = $('#tokenPlaintext').textContent;
+    try {
+      await navigator.clipboard.writeText(t);
+      const b = $('#copyTokenBtn');
+      b.textContent = 'Copied ✓';
+      setTimeout(() => { b.textContent = 'Copy token'; }, 1500);
+    } catch { toast('Copy failed — select the token and copy manually', 'err'); }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (!settingsModal.hidden) closeSettings();
+    }
+  });
+
   // -------------------- boot the app --------------------
   async function bootApp() {
-    await Promise.all([loadCounts(), loadContacts()]);
+    await Promise.all([loadCounts(), loadContacts(), loadUsage()]);
+  }
+
+  async function loadUsage() {
+    try {
+      const u = await GET('/api/ai-usage');
+      const chip = $('#usage');
+      const monthly = Number(u.month_usd || 0);
+      chip.textContent = '$' + monthly.toFixed(2) + ' / mo';
+      chip.title = `AI spend: $${Number(u.today_usd||0).toFixed(2)} today · ` +
+                   `$${Number(u.week_usd||0).toFixed(2)} this week · ` +
+                   `$${monthly.toFixed(2)} this month · ` +
+                   `${u.total_calls||0} calls (${u.errors||0} errors)`;
+      chip.classList.toggle('warm', monthly > 5);
+      chip.classList.toggle('hot', monthly > 15);
+    } catch {}
   }
 
   async function loadCounts() {
@@ -270,8 +360,18 @@
     delBtn.type = 'button'; delBtn.textContent = 'Delete';
     delBtn.addEventListener('click', deleteContact);
 
-    dh.appendChild(nameInput); dh.appendChild(bucketSel); dh.appendChild(statusSel); dh.appendChild(delBtn);
+    dh.appendChild(nameInput);
+    const scoreBadge = renderScoreBadge(c);
+    if (scoreBadge) dh.appendChild(scoreBadge);
+    dh.appendChild(bucketSel); dh.appendChild(statusSel); dh.appendChild(delBtn);
     body.appendChild(dh);
+
+    // ---- hard-rule gate warning ----
+    const gateWarn = renderGateWarning(c);
+    if (gateWarn) body.appendChild(gateWarn);
+
+    // ---- AI: scan + drafts + flags ----
+    body.appendChild(renderAIPanel());
 
     // ---- handles ----
     body.appendChild(renderHandlesSection(c));
@@ -549,6 +649,198 @@
       finally { btn.disabled = false; }
     });
     return form;
+  }
+
+  // -------------------- AI panel (Phase 4) --------------------
+
+  function renderScoreBadge(c) {
+    const s = c.signal_score;
+    if (s == null) return null;
+    const cls = s > 0 ? 'pos' : s < 0 ? 'neg' : 'zero';
+    const b = el('span', 'score-badge ' + cls);
+    const lbl = el('span', 'lbl'); lbl.textContent = 'score';
+    const val = el('span'); val.textContent = (s > 0 ? '+' : '') + s;
+    b.appendChild(lbl); b.appendChild(val);
+    return b;
+  }
+
+  function renderGateWarning(c) {
+    // Warn if the person is at or past vetting but the hard rule isn't cleared.
+    const gated = ['vetting', 'met', 'paying-fan'].includes(c.status);
+    if (!gated) return null;
+    if (c.long_term_named_confirmed) return null;
+    const w = el('div', 'gate-warn');
+    w.textContent = "Hard rule not cleared: no long-term named connections confirmed yet. Don't advance past vetting until this is verified.";
+    return w;
+  }
+
+  function renderAIPanel() {
+    const wrap = el('div', 'ai-panel');
+    const h = el('h3'); h.textContent = 'AI · analysis + drafts';
+    wrap.appendChild(h);
+
+    const actions = el('div', 'ai-actions');
+    const scanBtn = el('button', 'btn btn-primary btn-sm'); scanBtn.type = 'button'; scanBtn.textContent = 'Scan messages';
+    const draftBtn = el('button', 'btn btn-ghost btn-sm'); draftBtn.type = 'button'; draftBtn.textContent = 'Draft replies';
+    const cost = el('span', 'ai-cost'); cost.id = 'aiCost';
+    actions.appendChild(scanBtn); actions.appendChild(draftBtn); actions.appendChild(cost);
+    wrap.appendChild(actions);
+
+    // container populated on demand (scan / draft results) and initially with existing flags
+    const content = el('div'); content.className = 'ai-content';
+    wrap.appendChild(content);
+    renderExistingFlagsInto(content);
+
+    scanBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true; draftBtn.disabled = true;
+      scanBtn.innerHTML = '<span class="spinner"></span> Scanning…';
+      try {
+        const res = await POST('/api/contacts/' + currentContactId + '/scan', {});
+        detail.flags = res.flags || [];
+        detail.contact.signal_score = res.signal_score;
+        cost.textContent = formatCost(res.usage) + ` · ${res.usage.latency_ms}ms`;
+        renderScanResultInto(content, res);
+        // Redraw header so the score badge appears / updates.
+        renderDetail();
+        loadUsage();
+      } catch (e) {
+        toast('Scan failed: ' + (e.detail || e.message), 'err');
+      } finally {
+        scanBtn.disabled = false; draftBtn.disabled = false;
+        scanBtn.textContent = 'Scan messages';
+      }
+    });
+
+    draftBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true; draftBtn.disabled = true;
+      draftBtn.innerHTML = '<span class="spinner"></span> Drafting…';
+      try {
+        const res = await POST('/api/contacts/' + currentContactId + '/drafts', {});
+        cost.textContent = formatCost(res.usage) + ` · ${res.usage.latency_ms}ms`;
+        renderDraftsInto(content, res);
+        loadUsage();
+      } catch (e) {
+        toast('Draft failed: ' + (e.detail || e.message), 'err');
+      } finally {
+        scanBtn.disabled = false; draftBtn.disabled = false;
+        draftBtn.textContent = 'Draft replies';
+      }
+    });
+
+    return wrap;
+  }
+
+  function formatCost(u) {
+    if (!u) return '';
+    const usd = (u.cost_micro_usd || 0) / 1_000_000;
+    return usd < 0.001 ? '<$0.001' : ('$' + usd.toFixed(4));
+  }
+
+  function renderExistingFlagsInto(container) {
+    container.innerHTML = '';
+    if (!detail.flags || detail.flags.length === 0) {
+      const p = el('p', 'ai-empty');
+      p.textContent = 'No scan yet. Click "Scan messages" to analyze this thread, or "Draft replies" to generate response options.';
+      container.appendChild(p);
+      return;
+    }
+    renderFlagsInto(container, detail.flags);
+  }
+
+  function renderScanResultInto(container, res) {
+    container.innerHTML = '';
+    if (res.recommend_action) {
+      const rec = el('div');
+      const pill = el('span', 'rec-pill rec-' + res.recommend_action);
+      pill.textContent = res.recommend_action.replace('_', ' ');
+      rec.appendChild(document.createTextNode('Recommendation: '));
+      rec.appendChild(pill);
+      rec.style.marginTop = '10px';
+      rec.style.fontSize = '.85rem';
+      rec.style.color = 'var(--mute)';
+      container.appendChild(rec);
+    }
+    if (res.overall_read) {
+      const r = el('div', 'ai-read');
+      r.textContent = res.overall_read;
+      container.appendChild(r);
+    }
+    renderFlagsInto(container, res.flags);
+  }
+
+  function renderFlagsInto(container, flags) {
+    if (!flags || !flags.length) return;
+    const wrap = el('div', 'flags-section');
+    for (const cat of ['positive', 'negative', 'gate']) {
+      const list = flags.filter(f => f.category === cat);
+      if (!list.length) continue;
+      const box = el('div', 'flags-cat ' + cat);
+      const h = el('h4'); h.textContent = cat + ' · ' + list.length;
+      box.appendChild(h);
+      for (const f of list) {
+        const row = el('div', 'flag');
+        const top = el('div');
+        const rule = el('span', 'rule'); rule.textContent = f.rule_id;
+        const w = el('span', 'weight ' + (f.weight > 0 ? 'pos' : f.weight < 0 ? 'neg' : ''));
+        w.textContent = (f.weight > 0 ? '+' : '') + f.weight;
+        top.appendChild(rule); top.appendChild(w);
+        row.appendChild(top);
+        if (f.evidence) {
+          const ev = el('div', 'evidence'); ev.textContent = '"' + f.evidence + '"';
+          row.appendChild(ev);
+        }
+        box.appendChild(row);
+      }
+      wrap.appendChild(box);
+    }
+    container.appendChild(wrap);
+  }
+
+  function renderDraftsInto(container, res) {
+    // Wipe container so drafts + read replace whatever was there.
+    container.innerHTML = '';
+    if (res.read_of_thread) {
+      const r = el('div', 'ai-read');
+      r.textContent = res.read_of_thread;
+      container.appendChild(r);
+    }
+    const wrap = el('div', 'drafts');
+    for (const d of res.drafts) wrap.appendChild(draftRow(d));
+    container.appendChild(wrap);
+  }
+
+  function draftRow(d) {
+    const box = el('div', 'draft');
+    const tone = el('span', 'tone ' + d.tone); tone.textContent = d.tone.replace('-', ' ');
+    const text = el('div', 'text'); text.textContent = d.text;
+    box.appendChild(tone); box.appendChild(text);
+    if (d.rationale) {
+      const why = el('div', 'why'); why.textContent = d.rationale;
+      box.appendChild(why);
+    }
+    const row = el('div', 'row');
+    const copy = el('button', 'copy'); copy.type = 'button'; copy.textContent = 'Copy';
+    const use = el('button', 'use'); use.type = 'button'; use.textContent = 'Use as message';
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(d.text);
+        copy.classList.add('copied'); copy.textContent = 'Copied ✓';
+        setTimeout(() => { copy.classList.remove('copied'); copy.textContent = 'Copy'; }, 1500);
+      } catch { toast('Copy failed — select and copy manually', 'err'); }
+    });
+    use.addEventListener('click', () => {
+      // Prefill the add-message form with this draft and set direction to 'from me'.
+      const form = document.querySelector('#detailBody .msg-form');
+      if (!form) return;
+      const ta = form.querySelector('textarea');
+      const dirSel = form.querySelectorAll('select')[1];
+      if (ta) { ta.value = d.text; ta.focus(); }
+      if (dirSel) dirSel.value = 'out';
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    row.appendChild(copy); row.appendChild(use);
+    box.appendChild(row);
+    return box;
   }
 
   // -------------------- save helpers --------------------

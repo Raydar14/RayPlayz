@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Ray · Message Capture",
+  "short_name": "Ray Capture",
+  "version": "0.1.0",
+  "description": "Capture DM threads from Instagram, Tinder, Bumble, Fetlife, TikTok, and X into Ray's private dashboard.",
+  "icons": {
+    "16":  "icons/icon-16.png",
+    "48":  "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Capture DM to Ray's dashboard",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "options_page": "options.html",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://rayplayz.delicate-rain-ccdb.workers.dev/*",
+    "https://rayplayz.online/*",
+    "https://www.rayplayz.online/*",
+    "https://rayplayzz.com/*",
+    "https://www.rayplayzz.com/*"
+  ]
+}

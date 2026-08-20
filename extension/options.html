@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ray Capture · Options</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">RAY · CAPTURE</div>
+  <p class="hint">Configure your extension. Both values are stored locally on this device.</p>
+
+  <label>Dashboard URL
+    <input type="url" id="baseUrl" placeholder="https://rayplayz.delicate-rain-ccdb.workers.dev" required>
+    <small>The base URL of your dashboard — no trailing slash.</small>
+  </label>
+
+  <label>Extension token
+    <input type="password" id="token" placeholder="rpx_..." required>
+    <small>Generate in the dashboard → Settings (⚙) → Browser extension → Generate new token.</small>
+  </label>
+
+  <div class="actions">
+    <button id="testBtn" type="button">Test connection</button>
+    <button id="saveBtn" type="button" class="primary">Save</button>
+  </div>
+
+  <div id="status" class="status" aria-live="polite"></div>
+</div>
+<script src="options.js"></script>
+</body>
+</html>
