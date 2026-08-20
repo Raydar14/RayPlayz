@@ -121,6 +121,81 @@
     showLogin();
   });
 
+  // -------------------- settings (extension token) --------------------
+
+  const settingsModal = $('#settingsModal');
+  $('#settingsBtn').addEventListener('click', openSettings);
+  settingsModal.addEventListener('click', (e) => { if (e.target.matches('[data-close]')) closeSettings(); });
+
+  async function openSettings() {
+    $('#tokenPlaintextBox').hidden = true;
+    $('#tokenPlaintext').textContent = '';
+    settingsModal.hidden = false;
+    await loadTokenStatus();
+  }
+  function closeSettings() { settingsModal.hidden = true; }
+
+  async function loadTokenStatus() {
+    const status = $('#tokenStatus');
+    const revokeBtn = $('#revokeTokenBtn');
+    status.textContent = 'Loading…';
+    try {
+      const r = await GET('/api/settings/extension-token');
+      if (r.active) {
+        const created = new Date(r.token.created_at);
+        const lastUsed = r.token.last_used_at ? new Date(r.token.last_used_at) : null;
+        status.innerHTML =
+          `<span style="color:#7cf0a4">● Active</span> · created ${created.toLocaleDateString()} · ` +
+          (lastUsed ? `last used ${lastUsed.toLocaleString()}` : 'never used yet');
+        revokeBtn.hidden = false;
+      } else {
+        status.innerHTML = '<span style="color:var(--dim)">○ No token generated yet</span>';
+        revokeBtn.hidden = true;
+      }
+    } catch (e) {
+      status.textContent = 'Failed to load: ' + (e.detail || e.message);
+    }
+  }
+
+  $('#rotateTokenBtn').addEventListener('click', async () => {
+    const btn = $('#rotateTokenBtn');
+    if (!confirm('Generate a new token? Any existing extension token will stop working immediately.')) return;
+    btn.disabled = true;
+    try {
+      const r = await POST('/api/settings/extension-token/rotate', {});
+      $('#tokenPlaintext').textContent = r.token;
+      $('#tokenPlaintextBox').hidden = false;
+      await loadTokenStatus();
+    } catch (e) {
+      toast('Failed: ' + (e.detail || e.message), 'err');
+    } finally { btn.disabled = false; }
+  });
+
+  $('#revokeTokenBtn').addEventListener('click', async () => {
+    if (!confirm('Revoke the active extension token? The extension will stop working until a new one is generated.')) return;
+    try {
+      await POST('/api/settings/extension-token/revoke', {});
+      $('#tokenPlaintextBox').hidden = true;
+      await loadTokenStatus();
+    } catch (e) { toast('Failed: ' + (e.detail || e.message), 'err'); }
+  });
+
+  $('#copyTokenBtn').addEventListener('click', async () => {
+    const t = $('#tokenPlaintext').textContent;
+    try {
+      await navigator.clipboard.writeText(t);
+      const b = $('#copyTokenBtn');
+      b.textContent = 'Copied ✓';
+      setTimeout(() => { b.textContent = 'Copy token'; }, 1500);
+    } catch { toast('Copy failed — select the token and copy manually', 'err'); }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (!settingsModal.hidden) closeSettings();
+    }
+  });
+
   // -------------------- boot the app --------------------
   async function bootApp() {
     await Promise.all([loadCounts(), loadContacts(), loadUsage()]);

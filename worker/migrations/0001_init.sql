@@ -127,9 +127,40 @@ CREATE TABLE IF NOT EXISTS ai_usage (
 
 CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at DESC);
 
+-- ---------- extension_tokens (Phase 3) ----------
+-- Browser-extension auth. One-way SHA-256 hashes only; the plaintext token
+-- is shown to the user once when they generate it and never stored.
+-- revoked_at is a soft-delete marker so old tokens can be audited without
+-- being usable.
+CREATE TABLE IF NOT EXISTS extension_tokens (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash    TEXT    NOT NULL UNIQUE,
+  label         TEXT,
+  created_at    INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  last_used_at  INTEGER,
+  revoked_at    INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_extension_tokens_active
+  ON extension_tokens(token_hash) WHERE revoked_at IS NULL;
+
+-- Additional columns on the messages table for idempotent extension ingest:
+-- external_id when the platform gives us a stable id, content_hash as our
+-- fallback. Both nullable so Phase 2 messages remain valid.
+ALTER TABLE messages ADD COLUMN external_id  TEXT;
+ALTER TABLE messages ADD COLUMN content_hash TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external
+  ON messages(contact_id, source, external_id)
+  WHERE external_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_content_hash
+  ON messages(contact_id, source, content_hash)
+  WHERE content_hash IS NOT NULL;
+
 -- ---------- schema_meta ----------
 CREATE TABLE IF NOT EXISTS schema_meta (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
-INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '2');
+INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '3');

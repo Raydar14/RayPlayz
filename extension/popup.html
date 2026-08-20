@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Capture</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="brand">RAY · CAPTURE</div>
+    <a id="settingsLink" href="#" title="Open settings">⚙</a>
+  </div>
+
+  <div id="statusStrip" class="strip"></div>
+
+  <div class="row">
+    <label>Source
+      <select id="source">
+        <option value="ig">Instagram</option>
+        <option value="tinder">Tinder</option>
+        <option value="bumble">Bumble</option>
+        <option value="fetlife">Fetlife</option>
+        <option value="tiktok">TikTok</option>
+        <option value="x">X (Twitter)</option>
+      </select>
+    </label>
+    <label>His handle
+      <input type="text" id="handle" placeholder="@handle or username" autocomplete="off">
+    </label>
+  </div>
+
+  <div class="row">
+    <label>Bucket
+      <select id="bucket">
+        <option value="dating">Dating</option>
+        <option value="fan">Fan</option>
+      </select>
+    </label>
+    <label>Display name <span class="opt">(optional)</span>
+      <input type="text" id="displayName" placeholder="defaults to handle" autocomplete="off">
+    </label>
+  </div>
+
+  <label>Parse mode
+    <select id="mode">
+      <option value="prefix">Prefix mode — lines starting with &gt; are from him</option>
+      <option value="alt-his">Alternating — his message first</option>
+      <option value="alt-mine">Alternating — my message first</option>
+    </select>
+  </label>
+
+  <label>Paste the thread here
+    <textarea id="transcript" rows="10"
+              placeholder="&gt; hey saw you like hiking, know any trails near tamarindo?
+haha depends what kind — sunrise or all-day?
+&gt; sunrise ideally
+noted. i'm testing you though, tell me one thing you're actively working on that has nothing to do with a partner"></textarea>
+  </label>
+
+  <div class="row" style="justify-content:space-between; align-items:center">
+    <div id="preview" class="preview"></div>
+    <button id="captureBtn" class="primary" type="button">Capture</button>
+  </div>
+
+  <div id="result" class="result" hidden></div>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+/* Match the dashboard aesthetic loosely. Fonts don't load in extensions
+   without host permissions, so fall back to system stack. */
+:root{
+  --void:#07070B; --void2:#0C0C13; --void3:#12121B;
+  --stroke:rgba(255,255,255,.10); --stroke2:rgba(255,255,255,.16);
+  --ink:#F3EEF2; --mute:#8B8798; --dim:#615D70;
+  --neon:#FF2E7E; --neon-soft:#FF6FA8; --neon-ink:#FFD7E7;
+  --ok:#4ADE80; --err:#F87171;
+}
+*{box-sizing:border-box}
+html,body{margin:0; padding:0; background:var(--void); color:var(--ink); font-family:system-ui, -apple-system, 'Segoe UI', sans-serif; min-height:100vh; font-size:14px}
+.wrap{max-width:520px; margin:60px auto; padding:36px 32px; background:var(--void2); border:1px solid var(--stroke); border-radius:12px}
+.brand{font-weight:700; font-size:1.05rem; letter-spacing:.15em; color:var(--neon-ink); margin-bottom:6px; text-shadow:0 0 12px rgba(255,46,126,.5)}
+.hint{color:var(--mute); font-size:.85rem; margin:0 0 24px}
+label{display:flex; flex-direction:column; gap:6px; margin-bottom:18px; font-size:.8rem; color:var(--mute); font-weight:500}
+input{padding:10px 12px; border-radius:6px; border:1px solid var(--stroke); background:var(--void3); color:var(--ink); font-size:.95rem; font-family:inherit}
+input:focus{outline:none; border-color:var(--neon); box-shadow:0 0 0 3px rgba(255,46,126,.15)}
+small{color:var(--dim); font-size:.75rem}
+.actions{display:flex; gap:10px; justify-content:flex-end; margin-top:8px}
+button{padding:9px 18px; border-radius:4px; border:1px solid var(--stroke); background:transparent; color:var(--ink); cursor:pointer; font-family:inherit; font-weight:600; font-size:.9rem}
+button:hover{border-color:var(--neon); color:var(--neon-ink)}
+button.primary{background:var(--neon); color:var(--void); border-color:var(--neon); box-shadow:0 0 12px rgba(255,46,126,.4)}
+button.primary:hover{background:var(--neon-soft)}
+button:disabled{opacity:.5; cursor:wait}
+.status{margin-top:16px; padding:10px 14px; border-radius:6px; font-size:.85rem; min-height:1.2em}
+.status.ok  {background:rgba(74,222,128,.10); border:1px solid rgba(74,222,128,.35); color:#7cf0a4}
+.status.err {background:rgba(248,113,113,.10); border:1px solid rgba(248,113,113,.35); color:var(--err)}
+.status.info{background:rgba(255,46,126,.08); border:1px solid rgba(255,46,126,.28); color:var(--neon-ink)}

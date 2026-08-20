@@ -46,6 +46,7 @@
       <button class="btn btn-primary btn-sm" id="newContactBtn" type="button">+ New contact</button>
       <span class="usage" id="usage" title="AI spend this month"></span>
       <span class="sess" id="sess"></span>
+      <button class="btn btn-ghost btn-sm" id="settingsBtn" type="button" title="Settings">⚙</button>
       <button class="btn btn-ghost btn-sm" id="logoutBtn" type="button">Log out</button>
     </div>
   </header>
@@ -108,6 +109,42 @@
       <button class="btn btn-primary btn-sm" type="submit" id="modalSubmit">Create</button>
     </div>
   </form>
+</div>
+
+<!-- ============ SETTINGS MODAL (Phase 3) ============ -->
+<div class="modal" id="settingsModal" hidden aria-modal="true" role="dialog" aria-labelledby="settingsTitle">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-card" style="max-width:540px">
+    <h3 id="settingsTitle">Settings</h3>
+
+    <fieldset>
+      <legend>Browser extension</legend>
+      <p class="hint" style="color:var(--mute); font-size:.85rem; margin:0 0 12px">
+        Generate a token, paste it into the extension's Options page. The token
+        lets the extension push captured DMs into this dashboard without your
+        login cookie.
+      </p>
+      <div id="tokenStatus" style="font-size:.85rem; color:var(--mute); margin-bottom:12px">Loading…</div>
+      <div id="tokenPlaintextBox" hidden
+           style="background:var(--void3); border:1px solid var(--neon); border-radius:6px; padding:10px 12px; margin-bottom:12px">
+        <div style="font-size:.7rem; color:var(--neon-ink); letter-spacing:.15em; text-transform:uppercase; margin-bottom:6px">New token — copy now</div>
+        <code id="tokenPlaintext"
+              style="display:block; word-break:break-all; font-family:'Space Grotesk',monospace; font-size:.85rem; color:var(--ink); margin-bottom:8px"></code>
+        <button class="btn btn-primary btn-sm" type="button" id="copyTokenBtn">Copy token</button>
+        <div style="font-size:.72rem; color:var(--warn); margin-top:8px">
+          ⚠ This is the only time you'll see it. If you lose it, generate a new one.
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" type="button" id="rotateTokenBtn">Generate new token</button>
+        <button class="btn btn-danger btn-sm"  type="button" id="revokeTokenBtn" hidden>Revoke</button>
+      </div>
+    </fieldset>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" type="button" data-close>Close</button>
+    </div>
+  </div>
 </div>
 
 <!-- toasts -->

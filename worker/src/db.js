@@ -97,12 +97,58 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at DESC)`,
 
+  // ---- Phase 3: browser-extension auth tokens ----
+  // One-way SHA-256 hashes only; the plaintext is shown to the user once
+  // when they generate it and never stored. revoked_at is a soft-delete
+  // marker so old tokens can be audited without being usable.
+  `CREATE TABLE IF NOT EXISTS extension_tokens (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash    TEXT    NOT NULL UNIQUE,
+    label         TEXT,
+    created_at    INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    last_used_at  INTEGER,
+    revoked_at    INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_extension_tokens_active
+     ON extension_tokens(token_hash) WHERE revoked_at IS NULL`,
+
+  // ---- Phase 3: message dedup key on messages ----
+  // The extension may push the same message twice (repeated capture of the
+  // same thread). external_id is a per-source id when the platform gives us
+  // one; content_hash is our fallback (sha256 of source + direction + body
+  // + normalized-sent-at). Both are nullable so manually-added Phase 2
+  // messages remain valid. UNIQUE partial indexes give us idempotent inserts.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external
+     ON messages(contact_id, source, external_id)
+     WHERE external_id IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_content_hash
+     ON messages(contact_id, source, content_hash)
+     WHERE content_hash IS NOT NULL`,
+
   `CREATE TABLE IF NOT EXISTS schema_meta (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
   )`,
-  `INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '2')`,
+  `INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '3')`,
 ];
+
+// Add-column migrations. SQLite doesn't have ADD COLUMN IF NOT EXISTS, so
+// we check pragma_table_info first and skip when the column already exists.
+// Each entry: [table, column, sql-fragment (type + defaults)].
+const ADD_COLUMN_MIGRATIONS = [
+  ['messages', 'external_id',  'TEXT'],
+  ['messages', 'content_hash', 'TEXT'],
+];
+
+async function applyAddColumns(env) {
+  for (const [table, column, spec] of ADD_COLUMN_MIGRATIONS) {
+    const existing = await env.DB.prepare(
+      `SELECT 1 AS present FROM pragma_table_info(?) WHERE name = ?`
+    ).bind(table, column).first();
+    if (existing) continue;
+    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${spec}`).run();
+  }
+}
 
 // Cache per Worker isolate — cheap gate around the CREATE IF NOT EXISTS batch.
 let schemaReady = false;
@@ -112,6 +158,9 @@ export async function ensureSchema(env) {
   if (!env.DB) throw new Error('D1 binding "DB" is not configured');
   // D1 batch runs statements sequentially in a single transaction.
   await env.DB.batch(SCHEMA_STATEMENTS.map(sql => env.DB.prepare(sql)));
+  // Add-column migrations must run outside the CREATE-only batch so we can
+  // read pragma_table_info between checks.
+  await applyAddColumns(env);
   schemaReady = true;
 }
 
