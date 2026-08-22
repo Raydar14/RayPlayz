@@ -13,12 +13,13 @@
 }
 
 /* per-source dot colors (roughly platform-brand-adjacent) */
-.src-ig      { background:#E1306C; }
-.src-tinder  { background:#FD5068; }
-.src-bumble  { background:#F6C71E; color:#111; }
-.src-fetlife { background:#B01B2E; }
-.src-tiktok  { background:#25F4EE; color:#000; }
-.src-x       { background:#e6edf3; color:#000; }
+.src-ig       { background:#E1306C; }
+.src-tinder   { background:#FD5068; }
+.src-bumble   { background:#F6C71E; color:#111; }
+.src-fetlife  { background:#B01B2E; }
+.src-tiktok   { background:#25F4EE; color:#000; }
+.src-x        { background:#e6edf3; color:#000; }
+.src-whatsapp { background:#25D366; color:#000; }
 
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%}

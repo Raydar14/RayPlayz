@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   handle_fetlife            TEXT,
   handle_tiktok             TEXT,
   handle_x                  TEXT,
+  handle_whatsapp           TEXT,
 
   -- Hard filters + practical logistics (specific to Ray's spec: CR + 6' + bilingual).
   location_kind             TEXT    CHECK(location_kind IN ('local','visiting','remote')),
@@ -59,12 +60,16 @@ CREATE INDEX IF NOT EXISTS idx_contacts_updated_at   ON contacts(updated_at DESC
 CREATE TABLE IF NOT EXISTS messages (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   contact_id   INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-  source       TEXT    NOT NULL CHECK(source IN ('ig','tinder','bumble','fetlife','tiktok','x')),
+  -- source validated in application layer so new platforms (Phase 3 v0.2
+  -- added 'whatsapp') don't require a table rebuild.
+  source       TEXT    NOT NULL,
   direction    TEXT    NOT NULL CHECK(direction IN ('in','out')),
   body         TEXT    NOT NULL,
   sent_at      INTEGER,
   ingested_at  INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-  raw_json     TEXT
+  raw_json     TEXT,
+  external_id  TEXT,
+  content_hash TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id, sent_at, id);

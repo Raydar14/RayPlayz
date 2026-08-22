@@ -1,26 +1,42 @@
 # Ray · Message Capture (browser extension)
 
 Chrome (Manifest V3) extension that captures DM threads from Instagram,
-Tinder, Bumble, Fetlife, TikTok, and X and pushes them into Ray's private
+Tinder, Bumble, Fetlife, TikTok, X, and WhatsApp into Ray's private
 dashboard.
 
-## What it does today (v0.1)
+## What it does today (v0.2)
 
-- **Popup capture**: click the extension icon on any DM page → paste the
-  thread text into the popup → hit **Capture** → messages land in your
-  dashboard with the right contact created or matched by handle.
-- **Source auto-detect** from the current tab's URL.
-- **Handle auto-fill** where the platform puts the handle in the URL
-  (IG profile pages, X, TikTok — Tinder/Bumble/Fetlife DM URLs don't
-  expose the handle, so you type it in).
-- **Idempotent**: recapture the same thread and it's a no-op — dedup by
-  content hash on the server.
+Two capture modes in one popup:
 
-## What's *not* yet in v0.1
+**📷 Screenshot (auto-extract)** — the fast one:
+- Drop a DM screenshot into the popup (drag & drop, click to select, or
+  paste an image with Ctrl+V).
+- Claude Vision reads the header for the contact identity + every
+  visible message with the correct direction (his vs yours).
+- Everything lands in the dashboard. Zero typing.
+- Works on all 7 platforms uniformly, including WhatsApp — which has no
+  scrapeable URL and blocks other automation.
+- Cost: ~$0.005 per screenshot on Sonnet 5.
 
-- Per-platform DOM auto-scrape (you paste for now). Coming in v0.2 —
-  starting with Instagram since it has the most stable DM structure.
-- Timestamp capture (all messages currently import with `sent_at = null`).
+**Paste text** — the free fallback:
+- Copy the visible thread text on any DM page.
+- Paste into the popup textarea.
+- Pick parse mode (prefix / alternating), hit Capture.
+
+Both modes:
+- **Source auto-detect** from the current tab's URL (screenshot mode
+  can override from the image).
+- **Handle auto-fill** for platforms that expose it in the URL.
+- **Idempotent**: recapture the same thread and it's a no-op — dedup
+  by content hash on the server.
+
+## What's *not* yet in v0.2
+
+- Per-platform in-page auto-scrape (nothing to click on the page
+  itself — you still have to open the popup and drop a shot / paste).
+  Coming in v0.3 if it earns its complexity.
+- Timestamp capture from screenshots (Vision returns readable
+  timestamps but we don't yet parse them into UTC).
 
 ## Install (Chrome / Brave / Edge / any Chromium browser)
 
@@ -47,21 +63,34 @@ dashboard.
 5. Click **Test connection** → should say *Connected. Token accepted.*
 6. Click **Save**.
 
-## Using it (per thread)
+## Using it — Screenshot mode (recommended)
 
-1. Open a DM thread on IG / Tinder / Bumble / Fetlife / TikTok / X.
-2. Select the whole visible thread text and **Copy** (Ctrl+C / Cmd+C).
-3. Click the Ray Capture icon in the toolbar.
-4. Confirm the source dropdown auto-picked the right platform, and that
-   his handle is filled in (type it if not).
-5. Paste into the transcript textarea.
-6. Pick a **parse mode**:
-   - **Prefix mode** (default): lines starting with `>` are from him,
-     everything else is from you. Recommended — most flexible.
-   - **Alternating**: pick who sent the first message; every subsequent
-     line alternates.
-7. Click **Capture**. Success message shows how many messages landed and
-   a link to open the contact in your dashboard.
+1. Open a DM thread on any platform (IG / Tinder / Bumble / Fetlife /
+   TikTok / X / WhatsApp Web).
+2. Take a screenshot of the visible conversation (macOS: Cmd+Shift+4
+   and select the DM area · Windows: Snipping Tool · or use your
+   browser's built-in screenshot). Copy it to clipboard OR save the file.
+3. Click the Ray Capture icon.
+4. Screenshot tab is the default. Either:
+   - **Paste** the screenshot from clipboard (Ctrl+V while the popup
+     is focused), or
+   - **Drop** the image file onto the drop-zone, or
+   - **Click** the drop-zone to browse and select.
+5. (Optional) Set a source hint or Bucket. Auto-detection usually gets
+   it right from the image.
+6. Click **Extract & capture**. Takes 3–8 seconds. Success message
+   shows what was detected + how many messages landed.
+
+## Using it — Paste-text mode (fallback)
+
+1. Open a DM thread. Select the visible thread text and **Copy**.
+2. Click the Ray Capture icon. Switch to the **Paste text** tab.
+3. Confirm source + his handle (type it if the URL doesn't expose it).
+4. Paste into the transcript textarea.
+5. Pick **parse mode**:
+   - **Prefix mode** (default): lines starting with `>` are from him.
+   - **Alternating**: pick who sent first; every line alternates.
+6. Click **Capture**.
 
 ## Parse mode examples
 
