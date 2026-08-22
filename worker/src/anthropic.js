@@ -35,7 +35,7 @@ export async function callClaude(env, {
   tool,
   model = DEFAULT_MODEL,
   maxTokens = 1024,
-  temperature = 0.7,
+  temperature, // ignored on Sonnet 5+ which deprecated the field
 }) {
   if (!env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY secret is not configured');
@@ -44,10 +44,14 @@ export async function callClaude(env, {
   const body = {
     model,
     max_tokens: maxTokens,
-    temperature,
     system,
     messages,
   };
+  // Only send temperature to models that still accept it. Sonnet 5 and
+  // Opus 5 reject the field with "temperature is deprecated for this model".
+  if (temperature != null && !/^claude-(sonnet|opus)-5/.test(model)) {
+    body.temperature = temperature;
+  }
   if (tool) {
     body.tools = [tool];
     body.tool_choice = { type: 'tool', name: tool.name };

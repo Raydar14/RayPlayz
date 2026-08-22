@@ -22,10 +22,13 @@
 
   <!-- SCREENSHOT MODE -->
   <div id="mode-screenshot" class="mode">
+    <div class="row" style="grid-template-columns:1fr; margin-bottom:8px">
+      <button id="captureTabBtn" class="primary" type="button">📸 Capture this tab</button>
+    </div>
     <div id="dropZone" class="drop-zone">
       <div class="drop-inner">
-        <div class="drop-title">Drop a DM screenshot here</div>
-        <div class="drop-sub">or click to select · or paste one with Ctrl+V</div>
+        <div class="drop-title">or drop a screenshot here</div>
+        <div class="drop-sub">click to select · paste with Ctrl+V · or use the button above</div>
       </div>
       <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
     </div>
