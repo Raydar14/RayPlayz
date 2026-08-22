@@ -227,11 +227,16 @@ export async function ensureSchema(env) {
     console.error('messages repair pass failed (continuing):', e?.message || e);
   }
 
-  // Step 2: base schema. All CREATE-IF-NOT-EXISTS, all idempotent.
-  await env.DB.batch(SCHEMA_STATEMENTS.map(sql => env.DB.prepare(sql)));
-
-  // Step 3: nullable column additions we can't declare in CREATE-only batch.
+  // Step 2: add-column migrations MUST run before the base batch. The batch
+  // includes CREATE INDEX statements on columns that only exist after this
+  // step (e.g. messages.external_id, messages.content_hash). Reversing this
+  // order causes a hard failure on existing DBs from earlier schema
+  // versions — the failure mode that landed Ray's live DB in an incomplete
+  // state before the manual repair.
   await applyAddColumns(env);
+
+  // Step 3: base schema. All CREATE-IF-NOT-EXISTS, all idempotent.
+  await env.DB.batch(SCHEMA_STATEMENTS.map(sql => env.DB.prepare(sql)));
 
   // Step 4: best-effort rebuild of messages to drop the source CHECK.
   // If this fails, only WhatsApp inserts hit the old constraint — everything
