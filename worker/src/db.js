@@ -217,20 +217,82 @@ let schemaReady = false;
 export async function ensureSchema(env) {
   if (schemaReady) return;
   if (!env.DB) throw new Error('D1 binding "DB" is not configured');
-  // D1 batch runs statements sequentially in a single transaction.
+
+  // Step 1: repair a partially-completed messages rebuild BEFORE anything
+  // else, so downstream CREATE INDEX statements don't fail on a missing
+  // table. Safe to run at every boot — a no-op in the healthy case.
+  try {
+    await repairPartialMessagesMigration(env);
+  } catch (e) {
+    console.error('messages repair pass failed (continuing):', e?.message || e);
+  }
+
+  // Step 2: base schema. All CREATE-IF-NOT-EXISTS, all idempotent.
   await env.DB.batch(SCHEMA_STATEMENTS.map(sql => env.DB.prepare(sql)));
-  // Add-column migrations must run outside the CREATE-only batch so we can
-  // read pragma_table_info between checks.
+
+  // Step 3: nullable column additions we can't declare in CREATE-only batch.
   await applyAddColumns(env);
-  // Best-effort one-shot rebuild of messages to drop the source CHECK.
-  // If this fails, everything still works — only WhatsApp inserts will
-  // hit the old constraint; other platforms are unaffected. Log for debug.
+
+  // Step 4: best-effort rebuild of messages to drop the source CHECK.
+  // If this fails, only WhatsApp inserts hit the old constraint — everything
+  // else keeps working. Log for debug.
   try {
     await migrateMessagesSourceCheck(env);
   } catch (e) {
     console.error('messages source-check migration failed (continuing):', e?.message || e);
   }
+
   schemaReady = true;
+}
+
+/**
+ * If a previous migration attempt was interrupted, the DB can end up with
+ * `messages_new` present and `messages` absent (or both present). Detect
+ * and heal. Idempotent — a healthy DB returns immediately.
+ */
+async function repairPartialMessagesMigration(env) {
+  const messages = await env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'"
+  ).first();
+  const messagesNew = await env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='messages_new'"
+  ).first();
+
+  // Case A: healthy. Both branches below only run on abnormal state.
+  if (messages && !messagesNew) return;
+
+  // Case B: broken — data table was dropped but rename never happened.
+  // messages_new has the latest data; promote it.
+  if (!messages && messagesNew) {
+    await env.DB.prepare('ALTER TABLE messages_new RENAME TO messages').run();
+    await env.DB.prepare(
+      'CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id, sent_at, id)'
+    ).run();
+    await env.DB.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external
+         ON messages(contact_id, source, external_id) WHERE external_id IS NOT NULL`
+    ).run();
+    await env.DB.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_content_hash
+         ON messages(contact_id, source, content_hash) WHERE content_hash IS NOT NULL`
+    ).run();
+    return;
+  }
+
+  // Case C: both exist. If messages_new is empty, drop it (leftover of a
+  // failed CREATE-then-INSERT run). If it has data, leave it — someone
+  // needs to eyeball it, but keep the good `messages` table intact.
+  if (messages && messagesNew) {
+    const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM messages_new').first();
+    if ((Number(row?.n) || 0) === 0) {
+      await env.DB.prepare('DROP TABLE messages_new').run();
+    } else {
+      console.error('Both messages and messages_new have data; needs manual review');
+    }
+    return;
+  }
+
+  // Case D: neither exists (fresh install). SCHEMA_STATEMENTS will create.
 }
 
 // Handy wrapper: run a prepared statement with bound args, return .all()/.first()/.run() shape.
