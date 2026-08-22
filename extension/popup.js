@@ -316,6 +316,42 @@ document.addEventListener('paste', (e) => {
   }
 });
 
+// Capture the visible area of the current tab as a PNG. Chrome returns a
+// data: URL; we split into base64 + media_type for consistency with the
+// drag/drop path.
+$('#captureTabBtn').addEventListener('click', async () => {
+  const btn = $('#captureTabBtn');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Capturing…';
+  try {
+    // Close the popup momentarily so it doesn't cover the tab? Actually not
+    // needed — captureVisibleTab captures the tab, not the popup overlay.
+    const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    if (!dataUrl) throw new Error('Chrome returned nothing');
+    const commaIdx = dataUrl.indexOf(',');
+    const base64 = dataUrl.slice(commaIdx + 1);
+    // Estimate byte size from base64 length.
+    const bytes = Math.floor(base64.length * 0.75);
+    pendingImage = { dataUrl, base64, media_type: 'image/png', bytes };
+    thumbImg.src = dataUrl;
+    thumbInfo.textContent = `image/png · ${(bytes / 1024).toFixed(0)} KB · captured tab`;
+    thumbWrap.hidden = false;
+    $('#captureImgBtn').disabled = false;
+    setResult('', ''); // clear any previous result
+    $('#result').hidden = true;
+  } catch (e) {
+    setResult(
+      'Capture failed: ' + (e?.message || 'Chrome rejected the request. ' +
+      'The tab may be a chrome:// page or extension page — those can\'t be captured.'),
+      'err'
+    );
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+});
+
 $('#clearThumb').addEventListener('click', (e) => {
   e.preventDefault();
   pendingImage = null;
