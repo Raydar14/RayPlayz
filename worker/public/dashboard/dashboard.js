@@ -402,15 +402,78 @@
     body.appendChild(renderMsgForm());
   }
 
+  // Build a URL that opens the person on the platform, or best-effort
+  // fallback (their profile, or the messages inbox). Returns null when we
+  // have no usable link (bad handle, unmatched source, etc.).
+  function linkForSource(source, rawHandle) {
+    const h = String(rawHandle || '').trim().replace(/^@+/, '');
+    if (!h) return null;
+    switch (source) {
+      case 'ig':
+        return { url: 'https://www.instagram.com/' + encodeURIComponent(h) + '/',
+                 label: 'IG profile', note: 'opens profile — click Message' };
+      case 'x':
+        return { url: 'https://x.com/' + encodeURIComponent(h),
+                 label: 'X profile', note: 'opens profile — click Message' };
+      case 'tiktok':
+        return { url: 'https://www.tiktok.com/@' + encodeURIComponent(h),
+                 label: 'TikTok profile', note: 'opens profile' };
+      case 'fetlife':
+        // Fetlife handles resolve at /handle-slug.
+        return { url: 'https://fetlife.com/' + encodeURIComponent(h),
+                 label: 'Fetlife profile', note: 'opens profile' };
+      case 'whatsapp': {
+        // Digits-only? Direct chat via wa.me. Otherwise open web.whatsapp.com
+        // and Ray picks the contact manually.
+        const digits = h.replace(/\D/g, '');
+        if (digits.length >= 8) {
+          return { url: 'https://wa.me/' + digits, label: 'WhatsApp chat',
+                   note: 'opens the chat directly' };
+        }
+        return { url: 'https://web.whatsapp.com/', label: 'WhatsApp Web',
+                 note: 'opens WhatsApp — pick the contact' };
+      }
+      case 'tinder':
+        return { url: 'https://tinder.com/app/messages', label: 'Tinder inbox',
+                 note: 'opens messages — pick the thread' };
+      case 'bumble':
+        return { url: 'https://bumble.com/app/messages', label: 'Bumble inbox',
+                 note: 'opens messages — pick the thread' };
+      default:
+        return null;
+    }
+  }
+
   function renderHandlesSection(c) {
     const s = section('Handles');
     const grid = el('div', 'grid');
     for (const [key, label] of SOURCES) {
       const l = el('label'); l.textContent = label;
+      // wrapper so we can lay input + open button side by side
+      const row = el('div', 'handle-row');
       const inp = el('input'); inp.type = 'text'; inp.maxLength = 200;
       inp.value = c['handle_' + key] || ''; inp.placeholder = 'blank if not on ' + label;
-      inp.addEventListener('blur', () => saveField('handle_' + key, inp.value.trim() || null));
-      l.appendChild(inp); grid.appendChild(l);
+      inp.addEventListener('blur', () => {
+        saveField('handle_' + key, inp.value.trim() || null);
+        refreshOpenBtn();
+      });
+      const openA = el('a', 'handle-open');
+      openA.target = '_blank';
+      openA.rel = 'noopener noreferrer';
+      openA.innerHTML = '↗';
+      function refreshOpenBtn() {
+        const link = linkForSource(key, inp.value);
+        if (link) {
+          openA.href = link.url;
+          openA.title = link.label + ' — ' + link.note;
+          openA.hidden = false;
+        } else {
+          openA.hidden = true;
+        }
+      }
+      refreshOpenBtn();
+      row.appendChild(inp); row.appendChild(openA);
+      l.appendChild(row); grid.appendChild(l);
     }
     s.appendChild(grid); return s;
   }

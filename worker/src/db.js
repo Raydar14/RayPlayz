@@ -160,6 +160,10 @@ async function applyAddColumns(env) {
  * validation (api.js SOURCES) is now the only source-name authority, which
  * lets us add new platforms without another table rebuild. Guarded by
  * inspecting the current table SQL so it only fires once.
+ *
+ * Runs statements one at a time (not in a batch) because D1's implicit
+ * batch transaction can misbehave when DDL and DML are mixed. Speed doesn't
+ * matter — this is a one-time migration.
  */
 async function migrateMessagesSourceCheck(env) {
   const info = await env.DB.prepare(
@@ -168,35 +172,43 @@ async function migrateMessagesSourceCheck(env) {
   if (!info?.sql) return;
   if (!/CHECK\s*\(\s*source\s+IN/i.test(info.sql)) return; // already migrated
 
-  // Rebuild in one batch — D1 runs batches in an implicit transaction, so
-  // if any statement fails the whole thing rolls back.
-  await env.DB.batch([
-    env.DB.prepare(`CREATE TABLE messages_new (
-      id           INTEGER PRIMARY KEY AUTOINCREMENT,
-      contact_id   INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-      source       TEXT    NOT NULL,
-      direction    TEXT    NOT NULL CHECK(direction IN ('in','out')),
-      body         TEXT    NOT NULL,
-      sent_at      INTEGER,
-      ingested_at  INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-      raw_json     TEXT,
-      external_id  TEXT,
-      content_hash TEXT
-    )`),
-    env.DB.prepare(
-      `INSERT INTO messages_new
-         (id, contact_id, source, direction, body, sent_at, ingested_at, raw_json, external_id, content_hash)
-         SELECT id, contact_id, source, direction, body, sent_at, ingested_at, raw_json, external_id, content_hash
-           FROM messages`
-    ),
-    env.DB.prepare('DROP TABLE messages'),
-    env.DB.prepare('ALTER TABLE messages_new RENAME TO messages'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id, sent_at, id)'),
-    env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external
-       ON messages(contact_id, source, external_id) WHERE external_id IS NOT NULL`),
-    env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_content_hash
-       ON messages(contact_id, source, content_hash) WHERE content_hash IS NOT NULL`),
-  ]);
+  // Clean up any half-done previous attempt.
+  await env.DB.prepare('DROP TABLE IF EXISTS messages_new').run();
+
+  await env.DB.prepare(`CREATE TABLE messages_new (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id   INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    source       TEXT    NOT NULL,
+    direction    TEXT    NOT NULL CHECK(direction IN ('in','out')),
+    body         TEXT    NOT NULL,
+    sent_at      INTEGER,
+    ingested_at  INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    raw_json     TEXT,
+    external_id  TEXT,
+    content_hash TEXT
+  )`).run();
+
+  await env.DB.prepare(
+    `INSERT INTO messages_new
+       (id, contact_id, source, direction, body, sent_at, ingested_at, raw_json, external_id, content_hash)
+       SELECT id, contact_id, source, direction, body, sent_at, ingested_at, raw_json, external_id, content_hash
+         FROM messages`
+  ).run();
+
+  await env.DB.prepare('DROP TABLE messages').run();
+  await env.DB.prepare('ALTER TABLE messages_new RENAME TO messages').run();
+
+  await env.DB.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id, sent_at, id)'
+  ).run();
+  await env.DB.prepare(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external
+       ON messages(contact_id, source, external_id) WHERE external_id IS NOT NULL`
+  ).run();
+  await env.DB.prepare(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_content_hash
+       ON messages(contact_id, source, content_hash) WHERE content_hash IS NOT NULL`
+  ).run();
 }
 
 // Cache per Worker isolate — cheap gate around the CREATE IF NOT EXISTS batch.
@@ -210,8 +222,14 @@ export async function ensureSchema(env) {
   // Add-column migrations must run outside the CREATE-only batch so we can
   // read pragma_table_info between checks.
   await applyAddColumns(env);
-  // One-shot rebuild of messages to drop the source CHECK constraint.
-  await migrateMessagesSourceCheck(env);
+  // Best-effort one-shot rebuild of messages to drop the source CHECK.
+  // If this fails, everything still works — only WhatsApp inserts will
+  // hit the old constraint; other platforms are unaffected. Log for debug.
+  try {
+    await migrateMessagesSourceCheck(env);
+  } catch (e) {
+    console.error('messages source-check migration failed (continuing):', e?.message || e);
+  }
   schemaReady = true;
 }
 
