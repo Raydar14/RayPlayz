@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow, noarchive">
-<title>Ray · Dashboard</title>
+<title>Play · Dashboard</title>
 <link rel="icon" type="image/png" href="/rayplayz-favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,7 @@
 <section class="login" id="loginView">
   <div class="login-card">
     <div class="login-mark">
-      <div class="brand">RAY · DASHBOARD</div>
+      <div class="brand">PLAY · DASHBOARD</div>
       <div class="sub">Private</div>
     </div>
     <h2>Sign in</h2>
@@ -36,7 +36,7 @@
 <div class="app" id="appView">
   <!-- top bar -->
   <header class="topbar">
-    <div class="brand">RAY · DASHBOARD<span class="thin">Private</span></div>
+    <div class="brand">PLAY · DASHBOARD<span class="thin">Private</span></div>
     <nav class="filters" id="filters" role="tablist">
       <button class="chip on" data-bucket="all"    role="tab" aria-selected="true">All <span class="count" id="c-all">0</span></button>
       <button class="chip"    data-bucket="dating" role="tab" aria-selected="false">Dating <span class="count" id="c-dating">0</span></button>
@@ -120,25 +120,25 @@
 
     <fieldset>
       <legend>Browser extension</legend>
-      <p class="hint" style="color:var(--mute); font-size:.85rem; margin:0 0 12px">
+      <p class="hint" style="color:var(--mute); font-size:.98rem; line-height:1.55; margin:0 0 14px">
         Generate a token, paste it into the extension's Options page. The token
         lets the extension push captured DMs into this dashboard without your
         login cookie.
       </p>
-      <div id="tokenStatus" style="font-size:.85rem; color:var(--mute); margin-bottom:12px">Loading…</div>
+      <div id="tokenStatus" style="font-size:.98rem; color:var(--mute); margin-bottom:14px">Loading…</div>
       <div id="tokenPlaintextBox" hidden
-           style="background:var(--void3); border:1px solid var(--neon); border-radius:6px; padding:10px 12px; margin-bottom:12px">
-        <div style="font-size:.7rem; color:var(--neon-ink); letter-spacing:.15em; text-transform:uppercase; margin-bottom:6px">New token — copy now</div>
+           style="background:var(--void3); border:1px solid var(--neon); border-radius:8px; padding:14px 16px; margin-bottom:14px">
+        <div style="font-size:.82rem; color:var(--neon-ink); letter-spacing:.14em; text-transform:uppercase; font-weight:700; margin-bottom:10px">New token — copy now</div>
         <code id="tokenPlaintext"
-              style="display:block; word-break:break-all; font-family:'Space Grotesk',monospace; font-size:.85rem; color:var(--ink); margin-bottom:8px"></code>
-        <button class="btn btn-primary btn-sm" type="button" id="copyTokenBtn">Copy token</button>
-        <div style="font-size:.72rem; color:var(--warn); margin-top:8px">
+              style="display:block; word-break:break-all; font-family:'Space Grotesk',monospace; font-size:1.02rem; line-height:1.4; color:var(--ink); margin-bottom:12px"></code>
+        <button class="btn btn-primary" type="button" id="copyTokenBtn">Copy token</button>
+        <div style="font-size:.92rem; color:var(--warn); margin-top:12px; line-height:1.4">
           ⚠ This is the only time you'll see it. If you lose it, generate a new one.
         </div>
       </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap">
-        <button class="btn btn-primary btn-sm" type="button" id="rotateTokenBtn">Generate new token</button>
-        <button class="btn btn-danger btn-sm"  type="button" id="revokeTokenBtn" hidden>Revoke</button>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="rotateTokenBtn">Generate new token</button>
+        <button class="btn btn-danger"  type="button" id="revokeTokenBtn" hidden>Revoke</button>
       </div>
     </fieldset>
 
