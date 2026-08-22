@@ -139,9 +139,11 @@ const SCHEMA_STATEMENTS = [
 // we check pragma_table_info first and skip when the column already exists.
 // Each entry: [table, column, sql-fragment (type + defaults)].
 const ADD_COLUMN_MIGRATIONS = [
-  ['messages', 'external_id',    'TEXT'],
-  ['messages', 'content_hash',   'TEXT'],
-  ['contacts', 'handle_whatsapp', 'TEXT'],
+  ['messages', 'external_id',       'TEXT'],
+  ['messages', 'content_hash',      'TEXT'],
+  ['contacts', 'handle_whatsapp',   'TEXT'],
+  ['contacts', 'recommend_action',  'TEXT'],  // last scan's recommendation
+  ['contacts', 'last_scanned_at',   'INTEGER'],
 ];
 
 async function applyAddColumns(env) {

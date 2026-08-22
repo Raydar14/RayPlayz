@@ -199,14 +199,17 @@ async function handleCounts(req, env) {
 // Small projection used in list view.
 const CONTACT_LIST_COLS = `id, display_name, bucket, status,
   handle_ig, handle_tinder, handle_bumble, handle_fetlife, handle_tiktok, handle_x, handle_whatsapp,
-  updated_at, met_in_person, long_term_named_confirmed`;
+  updated_at, met_in_person, long_term_named_confirmed,
+  signal_score, recommend_action, last_scanned_at`;
 
 async function handleContactsList(req, env, url) {
   await ensureSchema(env);
-  const bucket = url.searchParams.get('bucket');   // 'dating' | 'fan' | 'all' | null
-  const status = url.searchParams.get('status');   // one of STATUSES | null
-  const q      = url.searchParams.get('q');        // free-text search
-  const limit  = Math.min(500, Math.max(1, Number(url.searchParams.get('limit')) || 200));
+  const bucket    = url.searchParams.get('bucket');   // 'dating' | 'fan' | 'all' | null
+  const status    = url.searchParams.get('status');   // one of STATUSES | null
+  const q         = url.searchParams.get('q');        // free-text search
+  const rec       = url.searchParams.get('recommend'); // advance | hold | vet_more | close | unscanned | null
+  const sort      = url.searchParams.get('sort');     // 'score' | 'updated' (default)
+  const limit     = Math.min(500, Math.max(1, Number(url.searchParams.get('limit')) || 200));
 
   const where = [];
   const binds = [];
@@ -227,6 +230,17 @@ async function handleContactsList(req, env, url) {
                  handle_whatsapp LIKE ? ESCAPE '\\')`);
     for (let i = 0; i < 9; i++) binds.push(like);
   }
+  if (rec === 'unscanned') {
+    where.push('signal_score IS NULL');
+  } else if (['advance', 'hold', 'vet_more', 'close'].includes(rec)) {
+    where.push('recommend_action = ?'); binds.push(rec);
+  }
+
+  // Default sort: recent activity. sort=score → highest signal_score first,
+  // nulls last (so unscored contacts sink to the bottom).
+  const orderBy = sort === 'score'
+    ? 'signal_score IS NULL, signal_score DESC, updated_at DESC'
+    : 'updated_at DESC';
 
   const sql =
     `SELECT ${CONTACT_LIST_COLS},
@@ -236,7 +250,7 @@ async function handleContactsList(req, env, url) {
       (SELECT COALESCE(m.sent_at, m.ingested_at) FROM messages m WHERE m.contact_id = contacts.id ORDER BY COALESCE(m.sent_at, m.ingested_at) DESC, m.id DESC LIMIT 1) AS last_at
      FROM contacts
      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-     ORDER BY updated_at DESC
+     ORDER BY ${orderBy}
      LIMIT ?`;
   binds.push(limit);
   const rows = await env.DB.prepare(sql).bind(...binds).all();
@@ -611,9 +625,12 @@ async function handleContactScan(req, env, url, params) {
     if (inserts.length) batch.push(...inserts);
 
     const score = Math.max(-100, Math.min(100, Number(analysis.signal_score) || 0));
+    const rec = ['advance', 'hold', 'vet_more', 'close'].includes(analysis.recommend_action)
+      ? analysis.recommend_action : null;
     batch.push(env.DB.prepare(
-      'UPDATE contacts SET signal_score = ?, updated_at = ? WHERE id = ?'
-    ).bind(score, now, contactId));
+      `UPDATE contacts SET signal_score = ?, recommend_action = ?, last_scanned_at = ?, updated_at = ?
+         WHERE id = ?`
+    ).bind(score, rec, now, now, contactId));
 
     await env.DB.batch(batch);
 
@@ -635,6 +652,102 @@ async function handleContactScan(req, env, url, params) {
     await recordUsage(env, contactId, 'scan', usage, e?.message || String(e));
     return err(502, 'scan_failed', { detail: e?.detail || e?.message || 'unknown' });
   }
+}
+
+async function handleScanUnscanned(req, env) {
+  await ensureSchema(env);
+  const MAX_PER_CALL = 30;
+
+  // Pick contacts that (a) haven't been scanned yet AND (b) have at least
+  // one message to scan. Cap so a runaway inbox doesn't blow the budget.
+  const targets = await env.DB.prepare(
+    `SELECT c.id, c.display_name
+       FROM contacts c
+       WHERE c.signal_score IS NULL
+         AND EXISTS (SELECT 1 FROM messages m WHERE m.contact_id = c.id)
+       ORDER BY c.updated_at DESC
+       LIMIT ?`
+  ).bind(MAX_PER_CALL + 1).all();
+
+  const rows = targets.results ?? [];
+  const overflow = rows.length > MAX_PER_CALL;
+  const batch = rows.slice(0, MAX_PER_CALL);
+
+  if (batch.length === 0) {
+    return json({ ok: true, scanned: 0, results: [], overflow: false, total_cost_micro_usd: 0 });
+  }
+
+  const results = [];
+  let totalCost = 0;
+
+  for (const row of batch) {
+    try {
+      const { contact, messages } = await loadContactAndThread(env, row.id, null);
+      if (!messages || messages.length === 0) {
+        results.push({ contact_id: row.id, error: 'no_messages' });
+        continue;
+      }
+      const userMsg = renderContactContext(contact, messages);
+      const { output, usage } = await callClaude(env, {
+        system: SCORE_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMsg }],
+        tool: SCORE_TOOL,
+        maxTokens: 2048,
+        temperature: 0.2,
+      });
+      totalCost += usage.cost_micro_usd || 0;
+      await recordUsage(env, row.id, 'scan', usage, null);
+
+      const analysis = output.tool_input;
+      if (!analysis || !Array.isArray(analysis.flags)) {
+        results.push({ contact_id: row.id, error: 'shape_bad' });
+        continue;
+      }
+      const now = Date.now();
+      const score = Math.max(-100, Math.min(100, Number(analysis.signal_score) || 0));
+      const rec = ['advance', 'hold', 'vet_more', 'close'].includes(analysis.recommend_action)
+        ? analysis.recommend_action : null;
+
+      const inserts = analysis.flags
+        .filter(f => f && f.rule_id && f.category && Number.isInteger(f.weight))
+        .map(f => {
+          const msgIdx = Number.isInteger(f.message_index) ? f.message_index : null;
+          const msgRow = msgIdx != null ? messages[msgIdx] : null;
+          return env.DB.prepare(
+            `INSERT INTO flags (contact_id, message_id, rule_id, category, weight, evidence, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            row.id, msgRow ? msgRow.id : null,
+            String(f.rule_id).slice(0, 80), f.category, f.weight,
+            f.evidence ? String(f.evidence).slice(0, 2000) : null, now,
+          );
+        });
+      const stmts = [env.DB.prepare('DELETE FROM flags WHERE contact_id = ?').bind(row.id)];
+      if (inserts.length) stmts.push(...inserts);
+      stmts.push(env.DB.prepare(
+        `UPDATE contacts SET signal_score = ?, recommend_action = ?, last_scanned_at = ?, updated_at = ?
+           WHERE id = ?`
+      ).bind(score, rec, now, now, row.id));
+      await env.DB.batch(stmts);
+
+      results.push({
+        contact_id: row.id, display_name: contact.display_name,
+        signal_score: score, recommend_action: rec,
+        overall_read: analysis.overall_read,
+      });
+    } catch (e) {
+      results.push({ contact_id: row.id, error: e?.message || String(e) });
+    }
+  }
+
+  return json({
+    ok: true,
+    scanned: results.filter(r => !r.error).length,
+    failed: results.filter(r => r.error).length,
+    overflow, // true if there are more unscanned than we did in this call
+    total_cost_micro_usd: totalCost,
+    results,
+  });
 }
 
 async function handleAiUsage(req, env, url) {
@@ -870,47 +983,113 @@ async function handleIngestImage(req, env) {
     return err(502, 'vision_failed', { detail: e?.detail || e?.message || 'unknown' });
   }
 
-  if (!extraction || !Array.isArray(extraction.messages) || extraction.messages.length === 0) {
-    return err(422, 'no_messages_found',
-      { detail: extraction?.issue || 'Vision returned no messages — is this a DM screenshot?' });
+  if (!extraction || !extraction.mode) {
+    return err(422, 'no_mode', { detail: extraction?.issue || 'Vision could not classify the image.' });
   }
 
   const source = SOURCES.includes(extraction.source) ? extraction.source
                : sourceHint || null;
-  if (!source) return err(422, 'source_unknown',
-    { detail: 'Could not identify the platform from the image; pick one in the popup and try again.' });
-
-  const contact = extraction.contact || {};
-  const displayName = (typeof contact.display_name === 'string' && contact.display_name.trim())
-    ? contact.display_name.trim().slice(0, 200) : null;
-  const rawHandle = typeof contact.handle === 'string' ? contact.handle : '';
-  // Fall back to display_name when the image only shows a name (WhatsApp
-  // phone contacts). Downstream ingest matches on this as the platform key.
-  const externalId = normalizeHandle(rawHandle) || normalizeHandle(displayName);
-  if (!externalId) return err(422, 'no_contact_identity',
-    { detail: 'Could not extract a contact handle or name from the image header.' });
-
-  const messagesInput = extraction.messages
-    .filter(m => m && ['in', 'out'].includes(m.direction) && typeof m.body === 'string' && m.body.trim().length > 0)
-    .map(m => ({ direction: m.direction, body: m.body.trim() }));
-  if (messagesInput.length === 0) {
-    return err(422, 'no_valid_messages',
-      { detail: 'Vision returned messages but none had valid direction + body.' });
+  if (!source && extraction.mode !== 'unknown') {
+    return err(422, 'source_unknown',
+      { detail: 'Could not identify the platform from the image; pick one in the popup and try again.' });
   }
 
-  const result = await ingestMessagesFor(env, {
-    source, externalId,
-    displayName: displayName || externalId,
-    bucket: bucketHint, messagesInput,
-  });
+  // ---- Branch on mode ----
+  if (extraction.mode === 'thread') {
+    if (!Array.isArray(extraction.messages) || extraction.messages.length === 0) {
+      return err(422, 'no_messages_found',
+        { detail: extraction.issue || 'Vision saw a thread but no messages.' });
+    }
+    const contact = extraction.contact || {};
+    const displayName = (typeof contact.display_name === 'string' && contact.display_name.trim())
+      ? contact.display_name.trim().slice(0, 200) : null;
+    const rawHandle = typeof contact.handle === 'string' ? contact.handle : '';
+    const externalId = normalizeHandle(rawHandle) || normalizeHandle(displayName);
+    if (!externalId) return err(422, 'no_contact_identity',
+      { detail: 'Could not extract a contact handle or name from the image header.' });
 
-  return json({
-    ok: true,
-    ...result,
-    detected: { source, handle: externalId, display_name: displayName },
-    issue: extraction.issue || null,
-    usage: { cost_micro_usd: usage.cost_micro_usd, latency_ms: usage.latency_ms, model: usage.model },
-  });
+    const messagesInput = extraction.messages
+      .filter(m => m && ['in', 'out'].includes(m.direction) && typeof m.body === 'string' && m.body.trim().length > 0)
+      .map(m => ({ direction: m.direction, body: m.body.trim() }));
+    if (messagesInput.length === 0) {
+      return err(422, 'no_valid_messages', { detail: 'Vision returned messages but none had valid direction + body.' });
+    }
+
+    const result = await ingestMessagesFor(env, {
+      source, externalId,
+      displayName: displayName || externalId,
+      bucket: bucketHint, messagesInput,
+    });
+
+    return json({
+      ok: true,
+      mode: 'thread',
+      ...result,
+      detected: { source, handle: externalId, display_name: displayName },
+      issue: extraction.issue || null,
+      usage: { cost_micro_usd: usage.cost_micro_usd, latency_ms: usage.latency_ms, model: usage.model },
+    });
+  }
+
+  if (extraction.mode === 'inbox') {
+    const rows = Array.isArray(extraction.contacts) ? extraction.contacts : [];
+    if (rows.length === 0) {
+      return err(422, 'no_inbox_rows',
+        { detail: extraction.issue || 'Vision detected an inbox but no rows.' });
+    }
+    const results = [];
+    let totalAdded = 0, totalExisting = 0, totalRejected = 0, contactsCreated = 0;
+    for (const row of rows) {
+      const displayName = (typeof row?.display_name === 'string' && row.display_name.trim())
+        ? row.display_name.trim().slice(0, 200) : null;
+      const rawHandle = typeof row?.handle === 'string' ? row.handle : '';
+      const externalId = normalizeHandle(rawHandle) || normalizeHandle(displayName);
+      const preview = row?.preview;
+      if (!externalId || !preview || !['in', 'out'].includes(preview.direction) ||
+          typeof preview.body !== 'string' || !preview.body.trim()) {
+        results.push({ display_name: displayName, added: 0, error: 'incomplete_row' });
+        continue;
+      }
+      try {
+        const r = await ingestMessagesFor(env, {
+          source, externalId,
+          displayName: displayName || externalId,
+          bucket: bucketHint,
+          messagesInput: [{ direction: preview.direction, body: preview.body.trim() }],
+        });
+        totalAdded += r.added;
+        totalExisting += r.existing;
+        totalRejected += r.rejected;
+        if (r.contact.created) contactsCreated++;
+        results.push({
+          contact_id: r.contact.id,
+          display_name: r.contact.display_name,
+          created: r.contact.created,
+          added: r.added,
+          existing: r.existing,
+          unread: !!row?.unread,
+        });
+      } catch (e) {
+        results.push({ display_name: displayName, added: 0, error: e?.message || 'ingest_failed' });
+      }
+    }
+
+    return json({
+      ok: true,
+      mode: 'inbox',
+      source,
+      total: rows.length,
+      contacts_created: contactsCreated,
+      added: totalAdded, existing: totalExisting, rejected: totalRejected,
+      results,
+      issue: extraction.issue || null,
+      usage: { cost_micro_usd: usage.cost_micro_usd, latency_ms: usage.latency_ms, model: usage.model },
+    });
+  }
+
+  // mode === 'unknown'
+  return err(422, 'unknown_image_kind',
+    { detail: extraction.issue || 'Vision could not classify this image as a thread or inbox.' });
 }
 
 // ---------- route table ----------
@@ -939,6 +1118,7 @@ const ROUTES = [
   // AI (Phase 4)
   { method: 'POST',   pattern: '/api/contacts/:id/drafts',               handler: handleDraftsGenerate },
   { method: 'POST',   pattern: '/api/contacts/:id/scan',                 handler: handleContactScan },
+  { method: 'POST',   pattern: '/api/scan-unscanned',                    handler: handleScanUnscanned },
   { method: 'GET',    pattern: '/api/ai-usage',                          handler: handleAiUsage },
 
   // Extension (Phase 3)

@@ -234,64 +234,87 @@ export const SCORE_TOOL = {
 // is told to reason it out).
 
 export const IMAGE_EXTRACT_SYSTEM_PROMPT = `
-You are extracting a direct-message conversation from a screenshot for
-Ray's private dashboard. The screenshot may be from WhatsApp, Instagram DM,
-Tinder, Bumble, Fetlife, TikTok, or X.
+You are extracting DM data from a screenshot for Ray's private dashboard.
+The screenshot may be from WhatsApp, Instagram DM, Tinder, Bumble,
+Fetlife, TikTok, or X.
 
-Return your extraction via the record_capture tool. Rules:
+STEP 1 — Decide which mode:
+- "thread"  = a single open conversation. One header at top with one
+              person's name; message bubbles below in a conversation view.
+- "inbox"   = a list of many thread previews. Multiple rows/cards, each
+              showing a different person, an avatar, one preview line
+              (usually the most recent message), and often a timestamp.
+              This is the "which conversation should I open" view.
 
-CONTACT:
-- Read the header at the top of the DM view for the person's display name.
-- If a @handle or username is visible (e.g. "@diego" or "diego_cr"), capture
-  it separately in the handle field. Handles are lowercase, no @ prefix.
-- If only a display name is visible (common on WhatsApp with a phone
-  contact), leave handle empty; caller will fall back to display_name.
+STEP 2 — Extract via the record_capture tool.
 
-SOURCE:
-- Best-guess the platform from visual cues (WhatsApp green header, IG
-  gradient, Tinder card, Bumble yellow, Fetlife red-black, X blue check,
-  TikTok black). If truly unclear, omit — caller supplied a default.
+SOURCE (both modes):
+- Best-guess from visual cues (WhatsApp green header, IG gradient/type,
+  Tinder pink card, Bumble yellow, Fetlife red-black, X blue check,
+  TikTok black). Omit if truly ambiguous.
 
-MESSAGES:
-- Capture every visible message bubble in chronological order (top → bottom
-  as they appear in the screenshot).
-- direction: "in" for messages FROM the other person (usually left-aligned,
-  gray/white/light-colored bubble). "out" for messages FROM RAY (usually
-  right-aligned, colored/branded bubble). If a message looks system-generated
-  (typing indicator, "delivered", date separator, reactions-only), SKIP it.
-- body: the exact text of the message. Preserve line breaks. Do not paraphrase.
-- If a timestamp is visible for the message, capture the raw string as
-  timestamp_readable (e.g. "2:34 PM", "Yesterday", "Aug 12"). Leave null if not.
+IF mode = "thread":
+- Fill "contact" with { handle, display_name } from the conversation
+  header. Handles are lowercase, no @ prefix. If only a display name is
+  visible (WhatsApp with a phone contact), leave handle empty.
+- Fill "messages" with every visible message bubble in chronological
+  order (top → bottom).
+  - direction: "in" for messages FROM the other person (usually left,
+    gray/white/light bubble). "out" for messages FROM RAY (right,
+    colored/branded bubble). Skip system messages (typing indicator,
+    "delivered", date separators, reactions-only).
+  - body: exact message text, preserve line breaks, do not paraphrase.
+  - timestamp_readable: raw string as shown (e.g. "2:34 PM", "Yesterday",
+    "Aug 12") or null.
+- Leave "contacts" empty in thread mode.
 
-DO NOT invent messages, contacts, or details you cannot see. If the image
-is not a DM screenshot, return empty messages and a helpful note in
-"issue" so the caller can tell the user.
+IF mode = "inbox":
+- Fill "contacts" with ONE entry per thread preview visible.
+  Each entry:
+    - handle: username if visible (rare in inbox lists); usually null.
+    - display_name: exact name/label shown in that row.
+    - preview: { direction, body } — the one snippet visible for that
+      thread. direction is "in" unless it's clearly a "You: ..." echo
+      of Ray's last message, in which case "out".
+    - unread: true if there's a visual unread marker (bold row, colored
+      dot, unread count badge), false otherwise.
+    - timestamp_readable: raw string if visible.
+- Leave "contact" and "messages" empty in inbox mode.
+
+DO NOT invent contacts, messages, or details you cannot see. If the image
+is neither a thread nor an inbox (or is not a DM screenshot at all),
+set mode = "unknown" and put a helpful note in "issue".
 `.trim();
 
 export const IMAGE_EXTRACT_TOOL = {
   name: 'record_capture',
-  description: 'Record the contact and every message visible in a DM screenshot.',
+  description: 'Record either a single thread or an inbox of thread previews.',
   input_schema: {
     type: 'object',
     properties: {
+      mode: {
+        type: 'string',
+        enum: ['thread', 'inbox', 'unknown'],
+        description: 'thread = single open conversation. inbox = list of thread previews. unknown = image is neither.',
+      },
+      source: {
+        type: 'string',
+        enum: ['ig', 'tinder', 'bumble', 'fetlife', 'tiktok', 'x', 'whatsapp'],
+        description: 'Best-guess platform based on visual cues. Omit if unsure.',
+      },
+      // ---- thread mode ----
       contact: {
         type: 'object',
         properties: {
           handle: {
             type: 'string',
-            description: '@handle / username exactly as shown, lowercase, no leading @. Empty if only a display name is visible.',
+            description: '@handle / username as shown, lowercase, no leading @. Empty if only a display name is visible.',
           },
           display_name: {
             type: 'string',
             description: 'Display name from the DM header.',
           },
         },
-        required: ['display_name'],
-      },
-      source: {
-        type: 'string',
-        enum: ['ig', 'tinder', 'bumble', 'fetlife', 'tiktok', 'x', 'whatsapp'],
-        description: 'Best-guess platform based on visual cues. Omit if unsure.',
       },
       messages: {
         type: 'array',
@@ -305,12 +328,44 @@ export const IMAGE_EXTRACT_TOOL = {
           required: ['direction', 'body'],
         },
       },
+      // ---- inbox mode ----
+      contacts: {
+        type: 'array',
+        description: 'One entry per thread preview visible in an inbox list.',
+        items: {
+          type: 'object',
+          properties: {
+            handle: {
+              type: ['string', 'null'],
+              description: 'Handle if visible in the preview row (rare); null otherwise.',
+            },
+            display_name: {
+              type: 'string',
+              description: 'Exact name/label shown in the row.',
+            },
+            preview: {
+              type: 'object',
+              properties: {
+                direction: { type: 'string', enum: ['in', 'out'] },
+                body: { type: 'string' },
+              },
+              required: ['direction', 'body'],
+            },
+            unread: {
+              type: 'boolean',
+              description: 'true if there is a visual unread indicator (bold row, dot, badge).',
+            },
+            timestamp_readable: { type: ['string', 'null'] },
+          },
+          required: ['display_name', 'preview'],
+        },
+      },
       issue: {
         type: 'string',
-        description: 'If the image is not a DM screenshot, or extraction was partial, explain here.',
+        description: 'If the image is not a DM screenshot or extraction was partial, explain here.',
       },
     },
-    required: ['contact', 'messages'],
+    required: ['mode'],
   },
 };
 

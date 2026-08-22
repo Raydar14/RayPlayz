@@ -144,6 +144,32 @@ a{color:inherit; text-decoration:none}
 .contact-item .preview .in::before{content:"‹ "; color:var(--mute)}
 .contact-item .preview .out::before{content:"› "; color:var(--neon-soft)}
 
+/* recommendation-based row tints */
+.contact-item.rec-row-advance  { background:linear-gradient(90deg, rgba(74,222,128,.10), transparent 60%); border-left:3px solid rgba(74,222,128,.6) }
+.contact-item.rec-row-hold     { background:linear-gradient(90deg, rgba(255,255,255,.03), transparent 60%); border-left:3px solid rgba(255,255,255,.15) }
+.contact-item.rec-row-vet_more { background:linear-gradient(90deg, rgba(251,191,36,.10), transparent 60%); border-left:3px solid rgba(251,191,36,.5) }
+.contact-item.rec-row-close    { background:linear-gradient(90deg, rgba(248,113,113,.08), transparent 60%); border-left:3px solid rgba(248,113,113,.5); opacity:.7 }
+.contact-item.rec-row-close .name{ text-decoration:line-through; text-decoration-color:rgba(248,113,113,.5) }
+
+/* inline mini-score in list rows */
+.mini-score{
+  flex:0 0 auto; padding:1px 6px; border-radius:8px;
+  font-family:'Space Grotesk'; font-weight:700; font-size:.7rem; letter-spacing:.02em;
+  background:rgba(255,255,255,.06); color:var(--mute);
+}
+.mini-score.pos { background:rgba(74,222,128,.15); color:#7cf0a4 }
+.mini-score.neg { background:rgba(248,113,113,.15); color:var(--err) }
+.mini-score.zero{ background:rgba(255,255,255,.06); color:var(--mute) }
+
+/* sort row above the contact list */
+.sort-row{margin-top:8px; font-size:.75rem; color:var(--dim)}
+.sort-row label{display:inline-flex; align-items:center; gap:6px}
+.sort-row select{
+  padding:4px 8px; border-radius:4px; border:1px solid var(--stroke); background:var(--void2);
+  color:var(--ink); font-family:'Space Grotesk'; font-size:.8rem;
+}
+.sort-row select:focus{outline:none; border-color:var(--neon)}
+
 /* ---------- DETAIL PANE ---------- */
 .detail{flex:1 1 auto; display:flex; flex-direction:column; min-height:0; overflow:hidden}
 .detail-empty{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
