@@ -14,6 +14,52 @@
 
   <div id="statusStrip" class="strip"></div>
 
+  <!-- Mode tabs -->
+  <div class="tabs">
+    <button type="button" class="tab on" data-mode="screenshot">📷 Screenshot (auto)</button>
+    <button type="button" class="tab"    data-mode="paste">Paste text</button>
+  </div>
+
+  <!-- SCREENSHOT MODE -->
+  <div id="mode-screenshot" class="mode">
+    <div id="dropZone" class="drop-zone">
+      <div class="drop-inner">
+        <div class="drop-title">Drop a DM screenshot here</div>
+        <div class="drop-sub">or click to select · or paste one with Ctrl+V</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+    </div>
+    <div id="thumbWrap" hidden style="text-align:center; margin-top:8px">
+      <img id="thumb" style="max-width:100%; max-height:180px; border-radius:6px; border:1px solid var(--stroke)">
+      <div style="margin-top:6px; font-size:.72rem; color:var(--mute)"><span id="thumbInfo"></span> · <a href="#" id="clearThumb" style="color:var(--neon-soft)">clear</a></div>
+    </div>
+    <div class="row">
+      <label>Source hint <span class="opt">(optional)</span>
+        <select id="imgSource">
+          <option value="">auto-detect</option>
+          <option value="ig">Instagram</option>
+          <option value="tinder">Tinder</option>
+          <option value="bumble">Bumble</option>
+          <option value="fetlife">Fetlife</option>
+          <option value="tiktok">TikTok</option>
+          <option value="x">X (Twitter)</option>
+          <option value="whatsapp">WhatsApp</option>
+        </select>
+      </label>
+      <label>Bucket
+        <select id="imgBucket">
+          <option value="dating">Dating</option>
+          <option value="fan">Fan</option>
+        </select>
+      </label>
+    </div>
+    <div class="row" style="justify-content:flex-end">
+      <button id="captureImgBtn" class="primary" type="button" disabled>Extract &amp; capture</button>
+    </div>
+  </div>
+
+  <!-- PASTE-TEXT MODE -->
+  <div id="mode-paste" class="mode" hidden>
   <div class="row">
     <label>Source
       <select id="source">
@@ -23,6 +69,7 @@
         <option value="fetlife">Fetlife</option>
         <option value="tiktok">TikTok</option>
         <option value="x">X (Twitter)</option>
+        <option value="whatsapp">WhatsApp</option>
       </select>
     </label>
     <label>His handle
@@ -62,6 +109,8 @@ noted. i'm testing you though, tell me one thing you're actively working on that
     <div id="preview" class="preview"></div>
     <button id="captureBtn" class="primary" type="button">Capture</button>
   </div>
+
+  </div><!-- /mode-paste -->
 
   <div id="result" class="result" hidden></div>
 </div>

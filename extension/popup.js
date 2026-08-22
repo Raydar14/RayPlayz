@@ -4,13 +4,14 @@
 const $ = (s) => document.querySelector(s);
 
 const SOURCE_HOSTS = [
-  { host: 'instagram.com',    source: 'ig'      },
-  { host: 'tinder.com',       source: 'tinder'  },
-  { host: 'bumble.com',       source: 'bumble'  },
-  { host: 'fetlife.com',      source: 'fetlife' },
-  { host: 'tiktok.com',       source: 'tiktok'  },
-  { host: 'x.com',            source: 'x'       },
-  { host: 'twitter.com',      source: 'x'       },
+  { host: 'instagram.com',    source: 'ig'       },
+  { host: 'tinder.com',       source: 'tinder'   },
+  { host: 'bumble.com',       source: 'bumble'   },
+  { host: 'fetlife.com',      source: 'fetlife'  },
+  { host: 'tiktok.com',       source: 'tiktok'   },
+  { host: 'x.com',            source: 'x'        },
+  { host: 'twitter.com',      source: 'x'        },
+  { host: 'web.whatsapp.com', source: 'whatsapp' },
 ];
 
 function setStrip(text, cls) {
@@ -67,10 +68,24 @@ async function primeFromTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.url) return;
     const { source, handle } = detectFromUrl(tab.url);
-    if (source) $('#source').value = source;
+    if (source) {
+      $('#source').value = source;
+      $('#imgSource').value = source;
+    }
     if (handle) $('#handle').value = handle;
   } catch {}
 }
+
+// ---------- mode tabs ----------
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+    tab.classList.add('on');
+    const mode = tab.dataset.mode;
+    document.getElementById('mode-screenshot').hidden = mode !== 'screenshot';
+    document.getElementById('mode-paste').hidden      = mode !== 'paste';
+  });
+});
 
 // ---------- config ----------
 
@@ -222,6 +237,141 @@ $('#captureBtn').addEventListener('click', async () => {
 $('#settingsLink').addEventListener('click', (e) => {
   e.preventDefault();
   chrome.runtime.openOptionsPage();
+});
+
+// ---------- screenshot mode ----------
+
+let pendingImage = null; // { base64, media_type, bytes, dataUrl }
+
+const dropZone   = $('#dropZone');
+const fileInput  = $('#fileInput');
+const thumbWrap  = $('#thumbWrap');
+const thumbImg   = $('#thumb');
+const thumbInfo  = $('#thumbInfo');
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      // reader.result is a data: URL. Strip the header.
+      const s = String(r.result);
+      const commaIdx = s.indexOf(',');
+      resolve({ dataUrl: s, base64: s.slice(commaIdx + 1), media_type: file.type || 'image/png', bytes: file.size });
+    };
+    r.onerror = () => reject(new Error('read_failed'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function acceptImageFile(file) {
+  if (!file || !file.type?.startsWith('image/')) {
+    setResult('That doesn\'t look like an image.', 'err');
+    return;
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    setResult('Image is too large (max 15 MB).', 'err');
+    return;
+  }
+  try {
+    const img = await fileToBase64(file);
+    pendingImage = img;
+    thumbImg.src = img.dataUrl;
+    thumbInfo.textContent = `${img.media_type} · ${(img.bytes / 1024).toFixed(0)} KB`;
+    thumbWrap.hidden = false;
+    $('#captureImgBtn').disabled = false;
+  } catch (e) {
+    setResult('Couldn\'t read image: ' + e.message, 'err');
+  }
+}
+
+// click-to-select
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  const f = e.target.files?.[0];
+  if (f) acceptImageFile(f);
+});
+
+// drag & drop
+['dragenter', 'dragover'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); e.stopPropagation();
+  dropZone.classList.add('hover');
+}));
+['dragleave', 'drop'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); e.stopPropagation();
+  dropZone.classList.remove('hover');
+}));
+dropZone.addEventListener('drop', (e) => {
+  const f = e.dataTransfer.files?.[0];
+  if (f) acceptImageFile(f);
+});
+
+// paste anywhere in the popup while screenshot mode is active
+document.addEventListener('paste', (e) => {
+  if (document.getElementById('mode-screenshot').hidden) return;
+  for (const item of (e.clipboardData?.items || [])) {
+    if (item.type?.startsWith('image/')) {
+      const f = item.getAsFile();
+      if (f) { acceptImageFile(f); e.preventDefault(); return; }
+    }
+  }
+});
+
+$('#clearThumb').addEventListener('click', (e) => {
+  e.preventDefault();
+  pendingImage = null;
+  thumbImg.src = '';
+  thumbWrap.hidden = true;
+  fileInput.value = '';
+  $('#captureImgBtn').disabled = true;
+});
+
+$('#captureImgBtn').addEventListener('click', async () => {
+  if (!pendingImage) { setResult('Drop or select an image first.', 'err'); return; }
+  const btn = $('#captureImgBtn');
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.innerHTML = '<span class="spinner"></span> Extracting…';
+  try {
+    const resp = await fetch(CONFIG.baseUrl + '/api/ingest-image', {
+      method: 'POST',
+      headers: {
+        'authorization': 'Bearer ' + CONFIG.token,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        image: pendingImage.base64,
+        image_media_type: pendingImage.media_type,
+        source: $('#imgSource').value || undefined,
+        bucket: $('#imgBucket').value,
+      }),
+    });
+    let data = null;
+    try { data = await resp.json(); } catch {}
+    if (!resp.ok) {
+      const detail = data?.detail || data?.error || `HTTP ${resp.status}`;
+      setResult('Extract failed: ' + detail, 'err');
+      return;
+    }
+    const url = CONFIG.baseUrl + '/dashboard/';
+    const created = data.contact?.created ? ' (new contact)' : '';
+    const cost = data.usage ? ` · $${((data.usage.cost_micro_usd || 0) / 1_000_000).toFixed(4)}` : '';
+    setResult(
+      `Captured ${data.added} new · ${data.existing} already there · ${data.rejected} rejected${created}. ` +
+      `Detected: <b>${data.detected?.display_name || data.detected?.handle}</b> on ${data.detected?.source}${cost}. ` +
+      `<a href="${url}" target="_blank" rel="noopener">Open dashboard</a>`,
+      'ok'
+    );
+    // Reset thumbnail so next screenshot starts fresh.
+    pendingImage = null;
+    thumbImg.src = '';
+    thumbWrap.hidden = true;
+    fileInput.value = '';
+  } catch (e) {
+    setResult('Network error: ' + (e?.message || 'unknown'), 'err');
+  } finally {
+    btn.disabled = pendingImage ? false : true;
+    btn.textContent = originalLabel;
+  }
 });
 
 // ---------- init ----------

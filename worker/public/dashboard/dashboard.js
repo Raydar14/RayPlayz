@@ -11,12 +11,13 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
   const SOURCES = [
-    ['ig',      'Instagram'],
-    ['tinder',  'Tinder'],
-    ['bumble',  'Bumble'],
-    ['fetlife', 'Fetlife'],
-    ['tiktok',  'TikTok'],
-    ['x',       'X'],
+    ['ig',       'Instagram'],
+    ['tinder',   'Tinder'],
+    ['bumble',   'Bumble'],
+    ['fetlife',  'Fetlife'],
+    ['tiktok',   'TikTok'],
+    ['x',        'X'],
+    ['whatsapp', 'WhatsApp'],
   ];
   const STATUSES = ['new', 'warming', 'vetting', 'met', 'paying-fan', 'ghosted', 'blocked'];
 

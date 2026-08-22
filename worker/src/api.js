@@ -18,6 +18,7 @@ import { callClaude, recordUsage } from './anthropic.js';
 import {
   DRAFT_SYSTEM_PROMPT, DRAFT_TOOL,
   SCORE_SYSTEM_PROMPT, SCORE_TOOL,
+  IMAGE_EXTRACT_SYSTEM_PROMPT, IMAGE_EXTRACT_TOOL,
   renderContactContext,
 } from './prompts.js';
 
@@ -33,13 +34,13 @@ function err(status, code, extra = {}) {
 
 // ---------- validation helpers ----------
 
-const SOURCES = ['ig', 'tinder', 'bumble', 'fetlife', 'tiktok', 'x'];
+const SOURCES = ['ig', 'tinder', 'bumble', 'fetlife', 'tiktok', 'x', 'whatsapp'];
 const BUCKETS = ['dating', 'fan'];
 const STATUSES = ['new', 'warming', 'vetting', 'met', 'paying-fan', 'ghosted', 'blocked'];
 const LOCATION_KINDS = ['local', 'visiting', 'remote'];
 const DIRECTIONS = ['in', 'out'];
 
-const HANDLE_FIELDS = ['handle_ig', 'handle_tinder', 'handle_bumble', 'handle_fetlife', 'handle_tiktok', 'handle_x'];
+const HANDLE_FIELDS = ['handle_ig', 'handle_tinder', 'handle_bumble', 'handle_fetlife', 'handle_tiktok', 'handle_x', 'handle_whatsapp'];
 
 // Contact fields safe to accept from PATCH. Each maps to a validator.
 const CONTACT_FIELDS = {
@@ -52,6 +53,7 @@ const CONTACT_FIELDS = {
   handle_fetlife:            v => str(v, 200, true),
   handle_tiktok:             v => str(v, 200, true),
   handle_x:                  v => str(v, 200, true),
+  handle_whatsapp:           v => str(v, 200, true),
   location_kind:             v => v === null ? null : oneOf(v, LOCATION_KINDS),
   location_note:             v => str(v, 500, true),
   height_cm:                 v => int(v, 0, 300, true),
@@ -196,7 +198,7 @@ async function handleCounts(req, env) {
 
 // Small projection used in list view.
 const CONTACT_LIST_COLS = `id, display_name, bucket, status,
-  handle_ig, handle_tinder, handle_bumble, handle_fetlife, handle_tiktok, handle_x,
+  handle_ig, handle_tinder, handle_bumble, handle_fetlife, handle_tiktok, handle_x, handle_whatsapp,
   updated_at, met_in_person, long_term_named_confirmed`;
 
 async function handleContactsList(req, env, url) {
@@ -221,8 +223,9 @@ async function handleContactsList(req, env, url) {
     where.push(`(display_name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR
                  handle_ig LIKE ? ESCAPE '\\' OR handle_tinder LIKE ? ESCAPE '\\' OR
                  handle_bumble LIKE ? ESCAPE '\\' OR handle_fetlife LIKE ? ESCAPE '\\' OR
-                 handle_tiktok LIKE ? ESCAPE '\\' OR handle_x LIKE ? ESCAPE '\\')`);
-    for (let i = 0; i < 8; i++) binds.push(like);
+                 handle_tiktok LIKE ? ESCAPE '\\' OR handle_x LIKE ? ESCAPE '\\' OR
+                 handle_whatsapp LIKE ? ESCAPE '\\')`);
+    for (let i = 0; i < 9; i++) binds.push(like);
   }
 
   const sql =
@@ -719,6 +722,7 @@ async function handleExtensionTokenRevoke(req, env) {
 const HANDLE_COL_FOR_SOURCE = {
   ig: 'handle_ig', tinder: 'handle_tinder', bumble: 'handle_bumble',
   fetlife: 'handle_fetlife', tiktok: 'handle_tiktok', x: 'handle_x',
+  whatsapp: 'handle_whatsapp',
 };
 
 function normalizeHandle(s) {
@@ -731,6 +735,63 @@ async function contentHashFor(source, direction, body, sentAt) {
   // between captures of the same message. Absent times become empty.
   const t = Number.isFinite(sentAt) ? Math.round(sentAt / 30_000) : '';
   return await sha256Hex(`${source}|${direction}|${t}|${body}`);
+}
+
+/**
+ * Core "upsert contact + insert messages" logic used by BOTH the plain
+ * text ingest and the vision-based image ingest. Assumes source has
+ * already been validated against SOURCES.
+ */
+async function ingestMessagesFor(env, {
+  source, externalId, displayName, bucket, messagesInput,
+}) {
+  const handleCol = HANDLE_COL_FOR_SOURCE[source];
+  if (!handleCol) throw new Error('bad_source_for_ingest');
+
+  let contact = await env.DB.prepare(
+    `SELECT id, display_name FROM contacts WHERE ${handleCol} = ? LIMIT 1`
+  ).bind(externalId).first();
+
+  let contactCreated = false;
+  if (!contact) {
+    const ins = await env.DB.prepare(
+      `INSERT INTO contacts (display_name, bucket, ${handleCol}) VALUES (?, ?, ?)`
+    ).bind(displayName, bucket, externalId).run();
+    contact = { id: ins.meta?.last_row_id, display_name: displayName };
+    contactCreated = true;
+  }
+
+  let added = 0, existing = 0, rejected = 0;
+  for (const m of messagesInput) {
+    if (!DIRECTIONS.includes(m?.direction)) { rejected++; continue; }
+    if (typeof m?.body !== 'string' || m.body.length === 0 || m.body.length > 100000) { rejected++; continue; }
+    const sentAt = Number.isFinite(m?.sent_at) ? Number(m.sent_at) : null;
+    const extId = (typeof m?.external_id === 'string' && m.external_id)
+      ? m.external_id.slice(0, 200) : null;
+    const contentHash = await contentHashFor(source, m.direction, m.body, sentAt);
+    try {
+      const res = await env.DB.prepare(
+        `INSERT INTO messages
+           (contact_id, source, direction, body, sent_at, external_id, content_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).bind(contact.id, source, m.direction, m.body, sentAt, extId, contentHash).run();
+      if (res.meta?.changes) added++;
+      else existing++;
+    } catch (e) {
+      if (String(e?.message || e).toLowerCase().includes('unique')) existing++;
+      else { rejected++; console.error('ingest insert failed:', e?.message || e); }
+    }
+  }
+
+  if (added > 0) {
+    await env.DB.prepare('UPDATE contacts SET updated_at = ? WHERE id = ?')
+      .bind(Date.now(), contact.id).run();
+  }
+
+  return {
+    contact: { id: contact.id, created: contactCreated, display_name: contact.display_name },
+    added, existing, rejected,
+  };
 }
 
 async function handleIngest(req, env) {
@@ -754,57 +815,101 @@ async function handleIngest(req, env) {
   if (messagesInput.length === 0) return err(400, 'no_messages');
   if (messagesInput.length > 500) return err(400, 'too_many_messages');
 
-  const handleCol = HANDLE_COL_FOR_SOURCE[source];
-  // Find-or-create contact. Match on the platform's handle column so a
-  // second capture of the same thread lands on the same contact row.
-  let contact = await env.DB.prepare(
-    `SELECT id, display_name FROM contacts WHERE ${handleCol} = ? LIMIT 1`
-  ).bind(externalId).first();
+  const result = await ingestMessagesFor(env, {
+    source, externalId, displayName, bucket, messagesInput,
+  });
+  return json({ ok: true, ...result });
+}
 
-  let contactCreated = false;
-  if (!contact) {
-    const ins = await env.DB.prepare(
-      `INSERT INTO contacts (display_name, bucket, ${handleCol}) VALUES (?, ?, ?)`
-    ).bind(displayName, bucket, externalId).run();
-    contact = { id: ins.meta?.last_row_id, display_name: displayName };
-    contactCreated = true;
+// ---------- Phase 3 (v0.2): vision-based screenshot ingest ----------
+
+async function handleIngestImage(req, env) {
+  await ensureSchema(env);
+  let body;
+  try { body = await req.json(); } catch { return err(400, 'bad_request'); }
+
+  // Accept base64 (no data: URL prefix) + media type. Extension always sends
+  // a stripped base64 string so the payload stays JSON.
+  const imageB64 = body?.image;
+  const mediaType = body?.image_media_type || 'image/png';
+  if (typeof imageB64 !== 'string' || imageB64.length < 100) return err(400, 'bad_image');
+  if (imageB64.length > 20 * 1024 * 1024) return err(400, 'image_too_large');
+  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mediaType)) {
+    return err(400, 'bad_image_media_type');
   }
 
-  // Build insert statements. We rely on UNIQUE partial indexes on
-  // (contact_id, source, external_id) and (contact_id, source, content_hash)
-  // for idempotency, so re-ingesting the same thread is a no-op.
-  let added = 0, existing = 0, rejected = 0;
-  for (const m of messagesInput) {
-    if (!DIRECTIONS.includes(m?.direction)) { rejected++; continue; }
-    if (typeof m?.body !== 'string' || m.body.length === 0 || m.body.length > 100000) { rejected++; continue; }
-    const sentAt = Number.isFinite(m?.sent_at) ? Number(m.sent_at) : null;
-    const extId = (typeof m?.external_id === 'string' && m.external_id)
-      ? m.external_id.slice(0, 200) : null;
-    const contentHash = await contentHashFor(source, m.direction, m.body, sentAt);
-    try {
-      const res = await env.DB.prepare(
-        `INSERT INTO messages
-           (contact_id, source, direction, body, sent_at, external_id, content_hash)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-      ).bind(contact.id, source, m.direction, m.body, sentAt, extId, contentHash).run();
-      if (res.meta?.changes) added++;
-      else existing++;
-    } catch (e) {
-      // UNIQUE constraint = duplicate. Anything else is a real error.
-      if (String(e?.message || e).toLowerCase().includes('unique')) existing++;
-      else { rejected++; console.error('ingest insert failed:', e?.message || e); }
-    }
+  // Optional user-provided hints. Vision output can override these if the
+  // image is unambiguous.
+  const sourceHint = SOURCES.includes(body?.source) ? body.source : null;
+  const bucketHint = BUCKETS.includes(body?.bucket) ? body.bucket : 'dating';
+
+  // Ask Claude Vision to extract the thread.
+  let usage = { model: 'unknown', input_tokens: 0, output_tokens: 0, cost_micro_usd: 0, latency_ms: 0 };
+  let extraction;
+  try {
+    const { output, usage: u } = await callClaude(env, {
+      system: IMAGE_EXTRACT_SYSTEM_PROMPT,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageB64 } },
+          { type: 'text', text: sourceHint
+              ? `Caller hint: source is likely "${sourceHint}". Override if the image clearly says otherwise.`
+              : 'No source hint. Best-guess from visual cues.' },
+        ],
+      }],
+      tool: IMAGE_EXTRACT_TOOL,
+      maxTokens: 4096,
+      temperature: 0.1,
+    });
+    usage = u;
+    await recordUsage(env, null, 'scan', usage, null); // reuse 'scan' bucket for spend
+    extraction = output.tool_input;
+  } catch (e) {
+    await recordUsage(env, null, 'scan', usage, e?.message || String(e));
+    return err(502, 'vision_failed', { detail: e?.detail || e?.message || 'unknown' });
   }
 
-  if (added > 0) {
-    await env.DB.prepare('UPDATE contacts SET updated_at = ? WHERE id = ?')
-      .bind(Date.now(), contact.id).run();
+  if (!extraction || !Array.isArray(extraction.messages) || extraction.messages.length === 0) {
+    return err(422, 'no_messages_found',
+      { detail: extraction?.issue || 'Vision returned no messages — is this a DM screenshot?' });
   }
+
+  const source = SOURCES.includes(extraction.source) ? extraction.source
+               : sourceHint || null;
+  if (!source) return err(422, 'source_unknown',
+    { detail: 'Could not identify the platform from the image; pick one in the popup and try again.' });
+
+  const contact = extraction.contact || {};
+  const displayName = (typeof contact.display_name === 'string' && contact.display_name.trim())
+    ? contact.display_name.trim().slice(0, 200) : null;
+  const rawHandle = typeof contact.handle === 'string' ? contact.handle : '';
+  // Fall back to display_name when the image only shows a name (WhatsApp
+  // phone contacts). Downstream ingest matches on this as the platform key.
+  const externalId = normalizeHandle(rawHandle) || normalizeHandle(displayName);
+  if (!externalId) return err(422, 'no_contact_identity',
+    { detail: 'Could not extract a contact handle or name from the image header.' });
+
+  const messagesInput = extraction.messages
+    .filter(m => m && ['in', 'out'].includes(m.direction) && typeof m.body === 'string' && m.body.trim().length > 0)
+    .map(m => ({ direction: m.direction, body: m.body.trim() }));
+  if (messagesInput.length === 0) {
+    return err(422, 'no_valid_messages',
+      { detail: 'Vision returned messages but none had valid direction + body.' });
+  }
+
+  const result = await ingestMessagesFor(env, {
+    source, externalId,
+    displayName: displayName || externalId,
+    bucket: bucketHint, messagesInput,
+  });
 
   return json({
     ok: true,
-    contact: { id: contact.id, created: contactCreated, display_name: contact.display_name },
-    added, existing, rejected,
+    ...result,
+    detected: { source, handle: externalId, display_name: displayName },
+    issue: extraction.issue || null,
+    usage: { cost_micro_usd: usage.cost_micro_usd, latency_ms: usage.latency_ms, model: usage.model },
   });
 }
 
@@ -840,7 +945,8 @@ const ROUTES = [
   { method: 'GET',    pattern: '/api/settings/extension-token',          handler: handleExtensionTokenInfo },
   { method: 'POST',   pattern: '/api/settings/extension-token/rotate',   handler: handleExtensionTokenRotate },
   { method: 'POST',   pattern: '/api/settings/extension-token/revoke',   handler: handleExtensionTokenRevoke },
-  { method: 'POST',   pattern: '/api/ingest',                            handler: handleIngest, bearerAuth: true },
+  { method: 'POST',   pattern: '/api/ingest',                            handler: handleIngest,      bearerAuth: true },
+  { method: 'POST',   pattern: '/api/ingest-image',                      handler: handleIngestImage, bearerAuth: true },
 ];
 
 // Match /api/contacts/:id against /api/contacts/42 → { id: "42" }

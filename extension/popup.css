@@ -47,3 +47,30 @@ button:disabled{opacity:.55; cursor:wait}
 .result.ok {background:rgba(74,222,128,.10); border:1px solid rgba(74,222,128,.35); color:#7cf0a4}
 .result.err{background:rgba(248,113,113,.10); border:1px solid rgba(248,113,113,.35); color:var(--err)}
 .result a{color:var(--neon-ink); text-decoration:underline}
+
+/* mode tabs */
+.tabs{display:flex; gap:4px; margin-bottom:12px; border-bottom:1px solid var(--stroke)}
+.tab{
+  flex:1; padding:8px 10px; border:none; border-bottom:2px solid transparent;
+  background:transparent; color:var(--mute); font-family:inherit; font-weight:600;
+  font-size:.78rem; cursor:pointer;
+}
+.tab:hover{color:var(--ink)}
+.tab.on{color:var(--neon-ink); border-bottom-color:var(--neon)}
+
+/* screenshot drop zone */
+.drop-zone{
+  border:2px dashed var(--stroke2); border-radius:8px; padding:22px 16px;
+  text-align:center; cursor:pointer; transition:.15s; background:var(--void2);
+}
+.drop-zone:hover, .drop-zone.hover{border-color:var(--neon); background:rgba(255,46,126,.05)}
+.drop-title{font-size:.9rem; color:var(--ink); font-weight:600; margin-bottom:4px}
+.drop-sub{font-size:.72rem; color:var(--mute)}
+
+/* small spinner */
+.spinner{
+  display:inline-block; width:12px; height:12px;
+  border:2px solid transparent; border-top-color:currentColor; border-right-color:currentColor;
+  border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle;
+}
+@keyframes spin{to{transform:rotate(360deg)}}

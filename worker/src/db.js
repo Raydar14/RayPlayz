@@ -20,6 +20,7 @@ const SCHEMA_STATEMENTS = [
     handle_fetlife            TEXT,
     handle_tiktok             TEXT,
     handle_x                  TEXT,
+    handle_whatsapp           TEXT,
     location_kind             TEXT    CHECK(location_kind IN ('local','visiting','remote')),
     location_note             TEXT,
     height_cm                 INTEGER,
@@ -44,12 +45,14 @@ const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS messages (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     contact_id   INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-    source       TEXT    NOT NULL CHECK(source IN ('ig','tinder','bumble','fetlife','tiktok','x')),
+    source       TEXT    NOT NULL,
     direction    TEXT    NOT NULL CHECK(direction IN ('in','out')),
     body         TEXT    NOT NULL,
     sent_at      INTEGER,
     ingested_at  INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    raw_json     TEXT
+    raw_json     TEXT,
+    external_id  TEXT,
+    content_hash TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id, sent_at, id)`,
 
@@ -136,8 +139,9 @@ const SCHEMA_STATEMENTS = [
 // we check pragma_table_info first and skip when the column already exists.
 // Each entry: [table, column, sql-fragment (type + defaults)].
 const ADD_COLUMN_MIGRATIONS = [
-  ['messages', 'external_id',  'TEXT'],
-  ['messages', 'content_hash', 'TEXT'],
+  ['messages', 'external_id',    'TEXT'],
+  ['messages', 'content_hash',   'TEXT'],
+  ['contacts', 'handle_whatsapp', 'TEXT'],
 ];
 
 async function applyAddColumns(env) {
@@ -148,6 +152,51 @@ async function applyAddColumns(env) {
     if (existing) continue;
     await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${spec}`).run();
   }
+}
+
+/**
+ * SQLite can't ALTER a CHECK constraint in place, so this one-shot migration
+ * rebuilds the messages table with source-check removed. Application-layer
+ * validation (api.js SOURCES) is now the only source-name authority, which
+ * lets us add new platforms without another table rebuild. Guarded by
+ * inspecting the current table SQL so it only fires once.
+ */
+async function migrateMessagesSourceCheck(env) {
+  const info = await env.DB.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'"
+  ).first();
+  if (!info?.sql) return;
+  if (!/CHECK\s*\(\s*source\s+IN/i.test(info.sql)) return; // already migrated
+
+  // Rebuild in one batch — D1 runs batches in an implicit transaction, so
+  // if any statement fails the whole thing rolls back.
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE messages_new (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      contact_id   INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+      source       TEXT    NOT NULL,
+      direction    TEXT    NOT NULL CHECK(direction IN ('in','out')),
+      body         TEXT    NOT NULL,
+      sent_at      INTEGER,
+      ingested_at  INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      raw_json     TEXT,
+      external_id  TEXT,
+      content_hash TEXT
+    )`),
+    env.DB.prepare(
+      `INSERT INTO messages_new
+         (id, contact_id, source, direction, body, sent_at, ingested_at, raw_json, external_id, content_hash)
+         SELECT id, contact_id, source, direction, body, sent_at, ingested_at, raw_json, external_id, content_hash
+           FROM messages`
+    ),
+    env.DB.prepare('DROP TABLE messages'),
+    env.DB.prepare('ALTER TABLE messages_new RENAME TO messages'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id, sent_at, id)'),
+    env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external
+       ON messages(contact_id, source, external_id) WHERE external_id IS NOT NULL`),
+    env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_content_hash
+       ON messages(contact_id, source, content_hash) WHERE content_hash IS NOT NULL`),
+  ]);
 }
 
 // Cache per Worker isolate — cheap gate around the CREATE IF NOT EXISTS batch.
@@ -161,6 +210,8 @@ export async function ensureSchema(env) {
   // Add-column migrations must run outside the CREATE-only batch so we can
   // read pragma_table_info between checks.
   await applyAddColumns(env);
+  // One-shot rebuild of messages to drop the source CHECK constraint.
+  await migrateMessagesSourceCheck(env);
   schemaReady = true;
 }
 
