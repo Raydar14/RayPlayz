@@ -7,11 +7,17 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0; padding:0; background:var(--void); color:var(--ink); font-family:system-ui, -apple-system, 'Segoe UI', sans-serif; width:400px; font-size:13px}
+/* When opened as a full browser tab (via the pop-out button), widen. */
+html.fullpage, html.fullpage body{width:auto; min-height:100vh}
+html.fullpage .wrap{max-width:640px; margin:20px auto; padding:24px; border:1px solid var(--stroke); border-radius:14px; background:var(--void2)}
+html.fullpage textarea{min-height:200px}
+
 .wrap{padding:14px 16px 16px}
 .head{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px}
+.head-tools{display:inline-flex; gap:12px; align-items:center}
 .brand{font-weight:700; font-size:.75rem; letter-spacing:.2em; color:var(--neon-ink); text-shadow:0 0 10px rgba(255,46,126,.5)}
-#settingsLink{color:var(--mute); font-size:1.1rem; text-decoration:none}
-#settingsLink:hover{color:var(--neon-ink)}
+#settingsLink, #popoutLink{color:var(--mute); font-size:1.1rem; text-decoration:none}
+#settingsLink:hover, #popoutLink:hover{color:var(--neon-ink)}
 
 .strip{
   padding:6px 10px; border-radius:4px; font-size:.72rem; margin-bottom:10px; text-align:center;
