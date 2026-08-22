@@ -58,6 +58,7 @@
   // -------------------- state --------------------
   let currentBucket = 'all';
   let currentSearch = '';
+  let currentSort   = 'updated'; // 'updated' | 'score'
   let currentContactId = null;
   let contacts = [];          // list cache
   let detail = null;          // full-detail cache for open contact
@@ -230,6 +231,7 @@
     const q = new URLSearchParams();
     if (currentBucket && currentBucket !== 'all') q.set('bucket', currentBucket);
     if (currentSearch) q.set('q', currentSearch);
+    if (currentSort === 'score') q.set('sort', 'score');
     try {
       const data = await GET('/api/contacts?' + q.toString());
       contacts = data.contacts || [];
@@ -252,6 +254,37 @@
     currentSearch = e.target.value.trim();
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(loadContacts, 220);
+  });
+
+  // -------------------- sort dropdown --------------------
+  $('#sortSel').addEventListener('change', (e) => {
+    currentSort = e.target.value;
+    loadContacts();
+  });
+
+  // -------------------- rank-all button --------------------
+  $('#rankBtn').addEventListener('click', async () => {
+    const btn = $('#rankBtn');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Ranking…';
+    try {
+      const res = await POST('/api/scan-unscanned', {});
+      const cost = ((res.total_cost_micro_usd || 0) / 1_000_000).toFixed(4);
+      let msg = `Scanned ${res.scanned || 0} contacts · $${cost}`;
+      if (res.failed) msg += ` · ${res.failed} failed`;
+      if (res.overflow) msg += ` · more remain — click again`;
+      toast(msg, res.scanned > 0 ? 'ok' : 'err');
+      // Auto-switch sort to score to show the ranked list.
+      currentSort = 'score';
+      $('#sortSel').value = 'score';
+      await Promise.all([loadContacts(), loadUsage()]);
+    } catch (e) {
+      toast('Rank failed: ' + (e.detail || e.message), 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
   });
 
   // -------------------- contact list rendering --------------------
@@ -279,7 +312,8 @@
 
   function renderContactItem(c) {
     const el = document.createElement('div');
-    el.className = 'contact-item' + (c.id === currentContactId ? ' active' : '');
+    const recClass = c.recommend_action ? ' rec-row-' + c.recommend_action : '';
+    el.className = 'contact-item' + recClass + (c.id === currentContactId ? ' active' : '');
     el.setAttribute('role', 'listitem');
     el.tabIndex = 0;
 
@@ -300,6 +334,15 @@
     const status = document.createElement('span');
     status.className = 'status s-' + c.status;
     status.textContent = c.status;
+    row2.appendChild(status);
+    if (c.signal_score != null) {
+      const sc = document.createElement('span');
+      const s = c.signal_score;
+      sc.className = 'mini-score ' + (s > 0 ? 'pos' : s < 0 ? 'neg' : 'zero');
+      sc.textContent = (s > 0 ? '+' : '') + s;
+      sc.title = c.recommend_action ? 'recommendation: ' + c.recommend_action.replace('_', ' ') : 'signal score';
+      row2.appendChild(sc);
+    }
     const preview = document.createElement('span'); preview.className = 'preview';
     if (c.last_body) {
       const span = document.createElement('span');
@@ -309,7 +352,7 @@
     } else {
       preview.textContent = 'no messages yet';
     }
-    row2.appendChild(status); row2.appendChild(preview);
+    row2.appendChild(preview);
 
     el.appendChild(row1); el.appendChild(row2);
 
