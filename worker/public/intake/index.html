@@ -32,6 +32,20 @@
           <input type="number" name="age" min="18" max="110" autocomplete="off">
         </label>
       </div>
+      <label>Where did we meet / match?
+        <select name="met_where">
+          <option value="">— pick one —</option>
+          <option value="bumble">Bumble</option>
+          <option value="tinder">Tinder</option>
+          <option value="fetlife">Fetlife</option>
+          <option value="ig">Instagram</option>
+          <option value="tiktok">TikTok</option>
+          <option value="x">X / Twitter</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="in_person">In person</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
       <div class="row">
         <label>How should she reach you?
           <select name="contact_platform">
@@ -150,6 +164,44 @@
       <h2>What you do for fun</h2>
       <label>Hobbies / what fills your time outside work
         <textarea name="hobbies" maxlength="1000" rows="3"></textarea>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Pick a pet name</h2>
+      <p class="helper">What would you like to call her? Pick one or write your own.</p>
+      <fieldset class="pet-grid">
+        <label><input type="radio" name="pet_choice" value="baby"> Baby</label>
+        <label><input type="radio" name="pet_choice" value="baby girl"> Baby girl</label>
+        <label><input type="radio" name="pet_choice" value="princess"> Princess</label>
+        <label><input type="radio" name="pet_choice" value="baby doll"> Baby doll</label>
+        <label><input type="radio" name="pet_choice" value="bitch"> Bitch</label>
+        <label><input type="radio" name="pet_choice" value="__custom__"> My own →</label>
+      </fieldset>
+      <label>Your own (if picked above)
+        <input type="text" name="pet_custom" maxlength="100" placeholder="whatever you'd actually call her" autocomplete="off">
+      </label>
+    </section>
+
+    <section id="favPhotoCard" class="card" hidden>
+      <h2>Pick your favorite of her pictures</h2>
+      <p class="helper">Which one draws you in?</p>
+      <div id="favPhotoRow" class="fav-photo-row"></div>
+    </section>
+
+    <section class="card">
+      <h2>Describe a date you'd take her on</h2>
+      <p class="helper">Not a wishlist of what you want from her — a real date you'd actually plan. Where, when, what you'd do, what you'd want her wearing isn't the point, where you'd want her head to be at the end is.</p>
+      <label>The date
+        <textarea name="date_idea" maxlength="2000" rows="5"></textarea>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Your message to Ray</h2>
+      <p class="helper">Anything you want to say to her, directly.</p>
+      <label>Message
+        <textarea name="message_for_ray" maxlength="2000" rows="5"></textarea>
       </label>
     </section>
 

@@ -472,6 +472,42 @@ a{color:inherit; text-decoration:none}
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ---------- site images (Ray's own photos uploaded in settings) ---------- */
+.site-images-row{
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
+}
+.site-slot{
+  position:relative; display:block; margin:0;
+  aspect-ratio:3 / 4; border:2px dashed var(--stroke2); border-radius:10px;
+  background:var(--void3); overflow:hidden; cursor:pointer;
+}
+.site-slot:hover{border-color:var(--neon-soft)}
+.site-slot.filled{border-style:solid; border-color:var(--neon); cursor:default}
+.site-slot .site-input{
+  position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;
+}
+.site-slot.filled .site-input{display:none}
+.site-preview{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:var(--mute); font-size:.82rem;
+  background-size:cover; background-position:center; background-repeat:no-repeat;
+}
+.site-slot.filled .site-preview > span{display:none}
+.site-remove{
+  position:absolute; top:4px; right:4px; width:24px; height:24px; z-index:2;
+  border-radius:50%; background:rgba(7,7,11,.75); color:var(--ink);
+  border:1px solid var(--stroke2); cursor:pointer; font-size:1rem;
+  font-weight:700; line-height:1; padding:0;
+  display:none; align-items:center; justify-content:center;
+}
+.site-slot.filled .site-remove{display:flex}
+.site-remove:hover{background:var(--err); color:#fff; border-color:var(--err)}
+.site-busy{
+  position:absolute; inset:0; z-index:1;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(7,7,11,.75); color:var(--neon-ink); font-size:.78rem;
+}
+
 /* ---------- intake photo gallery ---------- */
 .intake-photos{
   display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;

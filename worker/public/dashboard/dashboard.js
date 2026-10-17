@@ -41,6 +41,7 @@
   }
   const GET   = (p)    => api('GET', p);
   const POST  = (p, b) => api('POST', p, b);
+  const PUT   = (p, b) => api('PUT', p, b);
   const PATCH = (p, b) => api('PATCH', p, b);
   const DEL   = (p)    => api('DELETE', p);
 
@@ -134,6 +135,7 @@
     $('#tokenPlaintext').textContent = '';
     settingsModal.hidden = false;
     await loadTokenStatus();
+    await loadSiteImages();
   }
   function closeSettings() { settingsModal.hidden = true; }
 
@@ -191,6 +193,97 @@
       setTimeout(() => { b.textContent = 'Copy token'; }, 1500);
     } catch { toast('Copy failed — select the token and copy manually', 'err'); }
   });
+
+  // -------------------- settings: site images (Ray's own photos) --------------------
+
+  const SITE_IMG_MAX_EDGE = 1200;
+  const SITE_IMG_QUALITY  = 0.80;
+
+  async function loadSiteImages() {
+    try {
+      const r = await GET('/api/site-images');
+      const bySlot = new Map();
+      for (const img of r.images || []) bySlot.set(img.slot, img.data_url);
+      for (const slot of document.querySelectorAll('#siteImagesRow .site-slot')) {
+        const n = Number(slot.dataset.slot);
+        const url = bySlot.get(n);
+        const preview = slot.querySelector('.site-preview');
+        if (url) {
+          slot.classList.add('filled');
+          preview.style.backgroundImage = "url('" + url.replace(/'/g, "\\'") + "')";
+        } else {
+          slot.classList.remove('filled');
+          preview.style.backgroundImage = '';
+        }
+      }
+    } catch { /* fine on first load */ }
+  }
+
+  function siteResize(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return reject(new Error('empty image'));
+        const scale = Math.min(1, SITE_IMG_MAX_EDGE / Math.max(w, h));
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(w * scale);
+        canvas.height = Math.round(h * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (!blob) return reject(new Error('encode failed'));
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error || new Error('read failed'));
+          reader.readAsDataURL(blob);
+        }, 'image/jpeg', SITE_IMG_QUALITY);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+      img.src = url;
+    });
+  }
+
+  for (const slot of document.querySelectorAll('#siteImagesRow .site-slot')) {
+    const input   = slot.querySelector('.site-input');
+    const preview = slot.querySelector('.site-preview');
+    const remove  = slot.querySelector('.site-remove');
+    const slotNum = Number(slot.dataset.slot);
+
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const busy = document.createElement('div');
+      busy.className = 'site-busy';
+      busy.textContent = 'Uploading…';
+      slot.appendChild(busy);
+      try {
+        const dataURL = await siteResize(file);
+        await PUT('/api/site-images', { slot: slotNum, data_url: dataURL });
+        preview.style.backgroundImage = "url('" + dataURL.replace(/'/g, "\\'") + "')";
+        slot.classList.add('filled');
+        input.value = '';
+      } catch (e) {
+        toast('Upload failed: ' + (e?.detail || e?.message || 'unknown'), 'err');
+      } finally {
+        busy.remove();
+      }
+    });
+
+    remove.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!confirm('Remove photo ' + slotNum + '?')) return;
+      try {
+        await DEL('/api/site-images/' + slotNum);
+        slot.classList.remove('filled');
+        preview.style.backgroundImage = '';
+      } catch (err) {
+        toast('Remove failed: ' + (err?.detail || err?.message || 'unknown'), 'err');
+      }
+    });
+  }
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

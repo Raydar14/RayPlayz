@@ -111,7 +111,8 @@
     'can_drive', 'has_pets', 'likes_cats', 'job', 'can_cook',
     'skills', 'hobbies', 'last_relationship_when', 'longest_relationship_length',
     'looking_for', 'brings_to_table', 'long_term_named', 'real_failure',
-    'handle_disagree',
+    'handle_disagree', 'pet_name', 'favorite_photo_slot', 'date_idea',
+    'message_for_ray',
   ];
 
   const BOOL_KEYS = new Set([
@@ -133,6 +134,17 @@
       }
       else out[k] = s;
     }
+    // Resolve pet-name: a preset radio value, or the custom input if "__custom__"
+    // was picked (and only then, so a stray typed value doesn't override a
+    // preset selection).
+    const petChoice = out.pet_choice;
+    const petCustom = out.pet_custom;
+    delete out.pet_choice;
+    delete out.pet_custom;
+    if (petChoice === '__custom__' && petCustom) out.pet_name = petCustom;
+    else if (petChoice && petChoice !== '__custom__') out.pet_name = petChoice;
+    // Favorite-of-Ray's-photos radio stores 1/2/3 as string; coerce.
+    if (out.favorite_photo_slot) out.favorite_photo_slot = Number(out.favorite_photo_slot);
     return out;
   }
 
@@ -196,4 +208,38 @@
       submit.textContent = 'Send to Ray';
     }
   });
+
+  // ---------- Ray's photos: fetch and render the "pick a favorite" section ----------
+  // Public GET of /api/site-images returns [{slot, data_url}]. Only show the
+  // card when at least one image exists so an unconfigured install doesn't
+  // ship a broken-looking empty picker. We require all 3 so the question
+  // isn't half-rendered.
+  (async () => {
+    const card = document.getElementById('favPhotoCard');
+    const row  = document.getElementById('favPhotoRow');
+    if (!card || !row) return;
+    try {
+      const resp = await fetch('/api/site-images', { headers: { accept: 'application/json' } });
+      if (!resp.ok) return;
+      const payload = await resp.json();
+      const bySlot = new Map();
+      for (const img of payload.images || []) bySlot.set(img.slot, img.data_url);
+      if (bySlot.size < 3) return; // all three or nothing
+      row.innerHTML = '';
+      for (const slot of [1, 2, 3]) {
+        const url = bySlot.get(slot);
+        const label = document.createElement('label');
+        label.className = 'fav-slot';
+        label.innerHTML =
+          '<input type="radio" name="favorite_photo_slot" value="' + slot + '">' +
+          '<span class="fav-img" style="background-image:url(\'' + url.replace(/'/g, "\\'") + '\')"></span>' +
+          '<span class="fav-label">#' + slot + '</span>';
+        row.appendChild(label);
+      }
+      card.hidden = false;
+      recomputeProgress();
+    } catch {
+      // Silent — form still works without the favorite-pic question.
+    }
+  })();
 })();
