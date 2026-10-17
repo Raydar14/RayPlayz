@@ -315,12 +315,30 @@ async function handleContactGet(req, env, url, params) {
        ORDER BY created_at DESC`
   ).bind(id).all();
 
+  // Most recent intake photos (if any). Each row's photos_json is a
+  // JSON-encoded array of base64 data URLs; parse and flatten. We only
+  // return the newest submission's photos so a repeat intake doesn't
+  // stack ever-older selfies at the top of the gallery.
+  const intakeRow = await env.DB.prepare(
+    `SELECT photos_json FROM intake_submissions
+       WHERE contact_id = ? AND photos_json IS NOT NULL
+       ORDER BY created_at DESC LIMIT 1`
+  ).bind(id).first();
+  let intake_photos = [];
+  if (intakeRow?.photos_json) {
+    try {
+      const arr = JSON.parse(intakeRow.photos_json);
+      if (Array.isArray(arr)) intake_photos = arr.filter(x => typeof x === 'string');
+    } catch { /* ignore malformed row */ }
+  }
+
   return json({
     contact,
-    messages:   messages.results ?? [],
-    tags:       (tags.results ?? []).map(r => r.tag),
-    follow_ups: followUps.results ?? [],
-    flags:      flags.results ?? [],
+    messages:       messages.results ?? [],
+    tags:           (tags.results ?? []).map(r => r.tag),
+    follow_ups:     followUps.results ?? [],
+    flags:          flags.results ?? [],
+    intake_photos,
   });
 }
 
@@ -1106,6 +1124,28 @@ async function handleIngestImage(req, env) {
 
 const INTAKE_PLATFORMS = ['ig', 'tinder', 'bumble', 'fetlife', 'tiktok', 'x', 'whatsapp', 'other'];
 
+// Up to 3 photos per submission. Each one is a client-resized JPEG/PNG/WebP
+// delivered as a `data:image/...;base64,...` URL. We cap each at 800KB (base64
+// bytes) which, after 1.33x base64 overhead, is roughly a 600KB binary — plenty
+// for a ~1200px long-edge JPEG at quality 0.80. Over the cap we silently drop
+// the extra bytes rather than failing the whole submission.
+const MAX_PHOTOS = 3;
+const MAX_PHOTO_BYTES = 800 * 1024;
+const PHOTO_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+
+function clipPhotos(v) {
+  if (!Array.isArray(v)) return null;
+  const out = [];
+  for (const p of v) {
+    if (typeof p !== 'string') continue;
+    if (!PHOTO_RE.test(p)) continue;
+    if (p.length > MAX_PHOTO_BYTES) continue;
+    out.push(p);
+    if (out.length >= MAX_PHOTOS) break;
+  }
+  return out.length ? out : null;
+}
+
 function clipStr(v, max) {
   if (v == null) return null;
   if (typeof v !== 'string') return null;
@@ -1174,6 +1214,7 @@ function renderIntakeNotes(f) {
   if (f.real_failure)       lines.push(`one real failure he named:\n  ${f.real_failure}`);
   if (f.handle_disagree)    lines.push(`how he handles disagreement:\n  ${f.handle_disagree}`);
   if (f.anything_else)      lines.push(`anything else:\n  ${f.anything_else}`);
+  if (f.photos?.length)     lines.push(`photos: ${f.photos.length} attached (see photo panel)`);
   lines.push(`completeness: ${f.completeness_pct}%`);
   return lines.join('\n');
 }
@@ -1220,6 +1261,7 @@ async function handleIntakeSubmit(req, env) {
     real_failure:    clipStr(body?.real_failure, 2000),
     handle_disagree: clipStr(body?.handle_disagree, 2000),
     anything_else:   clipStr(body?.anything_else, 2000),
+    photos:          clipPhotos(body?.photos),
   };
   f.completeness_pct = computeCompleteness(f);
 
@@ -1258,9 +1300,9 @@ async function handleIntakeSubmit(req, env) {
        availability, has_car, is_4x4, can_drive, has_pets, pets_detail, likes_cats,
        job, can_cook, skills, hobbies,
        last_relationship_when, longest_relationship_length, looking_for, brings_to_table,
-       long_term_named, real_failure, handle_disagree, anything_else,
+       long_term_named, real_failure, handle_disagree, anything_else, photos_json,
        completeness_pct, raw_json)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     contactId, f.display_name, f.contact_platform, f.contact_handle, f.age, f.height_cm,
     f.speaks_spanish, f.speaks_english, f.has_kids, f.kids_detail, f.location, f.will_travel,
@@ -1268,7 +1310,8 @@ async function handleIntakeSubmit(req, env) {
     f.job, f.can_cook, f.skills, f.hobbies,
     f.last_relationship_when, f.longest_relationship_length, f.looking_for, f.brings_to_table,
     f.long_term_named, f.real_failure, f.handle_disagree, f.anything_else,
-    f.completeness_pct, JSON.stringify(body)
+    f.photos ? JSON.stringify(f.photos) : null,
+    f.completeness_pct, JSON.stringify({ ...body, photos: undefined })
   ).run();
 
   return json({ ok: true, completeness_pct: f.completeness_pct });
