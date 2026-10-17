@@ -239,6 +239,24 @@ $('#settingsLink').addEventListener('click', (e) => {
   chrome.runtime.openOptionsPage();
 });
 
+// Open the popup as a full browser tab so Chrome doesn't auto-close it
+// when Ray clicks out to find a screenshot file. The tab version uses
+// the same popup.html — the ?fullpage=1 marker widens the layout via CSS.
+$('#popoutLink').addEventListener('click', (e) => {
+  e.preventDefault();
+  const url = chrome.runtime.getURL('popup.html') + '?fullpage=1';
+  chrome.tabs.create({ url });
+  // Close this popup — the tab took over.
+  window.close();
+});
+
+// When loaded as a full tab, widen the body and hide the popout button.
+if (new URLSearchParams(location.search).get('fullpage') === '1') {
+  document.documentElement.classList.add('fullpage');
+  const p = document.getElementById('popoutLink');
+  if (p) p.style.display = 'none';
+}
+
 // ---------- screenshot mode ----------
 
 let pendingImage = null; // { base64, media_type, bytes, dataUrl }
