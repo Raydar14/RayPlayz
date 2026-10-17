@@ -128,11 +128,52 @@ const SCHEMA_STATEMENTS = [
      ON messages(contact_id, source, content_hash)
      WHERE content_hash IS NOT NULL`,
 
+  // ---- Phase 5: public intake form submissions ----
+  // Every submission from the public /intake form lands here, even partial ones
+  // (he can hit "send what I have" at any point). contact_id is set once we
+  // auto-create / match a contact; raw_json holds the full snapshot in case
+  // Ray wants to go back and inspect something that isn't a first-class column.
+  `CREATE TABLE IF NOT EXISTS intake_submissions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id        INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    display_name      TEXT,
+    contact_platform  TEXT,
+    contact_handle    TEXT,
+    age               INTEGER,
+    height_cm         INTEGER,
+    speaks_spanish    INTEGER,
+    speaks_english    INTEGER,
+    has_kids          INTEGER,
+    kids_detail       TEXT,
+    location          TEXT,
+    will_travel       INTEGER,
+    availability      TEXT,
+    has_car           INTEGER,
+    is_4x4            INTEGER,
+    can_drive         INTEGER,
+    has_pets          INTEGER,
+    pets_detail       TEXT,
+    likes_cats        INTEGER,
+    job               TEXT,
+    can_cook          INTEGER,
+    skills            TEXT,
+    hobbies           TEXT,
+    long_term_named   TEXT,
+    real_failure      TEXT,
+    handle_disagree   TEXT,
+    anything_else     TEXT,
+    completeness_pct  INTEGER,
+    raw_json          TEXT,
+    created_at        INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_created ON intake_submissions(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_contact ON intake_submissions(contact_id)`,
+
   `CREATE TABLE IF NOT EXISTS schema_meta (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
   )`,
-  `INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '3')`,
+  `INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '4')`,
 ];
 
 // Add-column migrations. SQLite doesn't have ADD COLUMN IF NOT EXISTS, so
