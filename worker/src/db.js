@@ -167,6 +167,7 @@ const SCHEMA_STATEMENTS = [
     handle_disagree             TEXT,
     anything_else               TEXT,
     photos_json                 TEXT,
+    met_where                   TEXT,
     completeness_pct            INTEGER,
     raw_json                    TEXT,
     created_at                  INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
@@ -197,6 +198,7 @@ const ADD_COLUMN_MIGRATIONS = [
   ['intake_submissions', 'looking_for',                 'TEXT'],
   ['intake_submissions', 'brings_to_table',             'TEXT'],
   ['intake_submissions', 'photos_json',                 'TEXT'],
+  ['intake_submissions', 'met_where',                   'TEXT'],
 ];
 
 async function applyAddColumns(env) {

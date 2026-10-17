@@ -1123,6 +1123,9 @@ async function handleIngestImage(req, env) {
 // clipped to a sane cap so a hostile form submission can't tank storage.
 
 const INTAKE_PLATFORMS = ['ig', 'tinder', 'bumble', 'fetlife', 'tiktok', 'x', 'whatsapp', 'other'];
+// Where he says he first encountered her. Superset of INTAKE_PLATFORMS plus
+// 'in_person' for people who met at an event, through a mutual friend, etc.
+const INTAKE_MET_WHERE = [...INTAKE_PLATFORMS, 'in_person'];
 
 // Up to 3 photos per submission. Each one is a client-resized JPEG/PNG/WebP
 // delivered as a `data:image/...;base64,...` URL. We cap each at 800KB (base64
@@ -1187,6 +1190,7 @@ function renderIntakeNotes(f) {
   const lines = [];
   lines.push('=== intake form ===');
   lines.push(`submitted ${new Date().toISOString()}`);
+  if (f.met_where) lines.push(`met/matched on: ${f.met_where}`);
   if (f.contact_platform || f.contact_handle) {
     lines.push(`reach via: ${f.contact_platform || '?'} ${f.contact_handle || ''}`.trim());
   }
@@ -1230,9 +1234,13 @@ async function handleIntakeSubmit(req, env) {
   const platformRaw = clipStr(body?.contact_platform, 20);
   const contact_platform = platformRaw && INTAKE_PLATFORMS.includes(platformRaw) ? platformRaw : null;
 
+  const metWhereRaw = clipStr(body?.met_where, 20);
+  const met_where = metWhereRaw && INTAKE_MET_WHERE.includes(metWhereRaw) ? metWhereRaw : null;
+
   const f = {
     display_name,
     contact_platform,
+    met_where,
     contact_handle:  clipStr(body?.contact_handle, 200),
     age:             clipInt(body?.age, 18, 110),
     height_cm:       clipInt(body?.height_cm, 100, 260),
@@ -1301,8 +1309,8 @@ async function handleIntakeSubmit(req, env) {
        job, can_cook, skills, hobbies,
        last_relationship_when, longest_relationship_length, looking_for, brings_to_table,
        long_term_named, real_failure, handle_disagree, anything_else, photos_json,
-       completeness_pct, raw_json)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       met_where, completeness_pct, raw_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     contactId, f.display_name, f.contact_platform, f.contact_handle, f.age, f.height_cm,
     f.speaks_spanish, f.speaks_english, f.has_kids, f.kids_detail, f.location, f.will_travel,
@@ -1311,6 +1319,7 @@ async function handleIntakeSubmit(req, env) {
     f.last_relationship_when, f.longest_relationship_length, f.looking_for, f.brings_to_table,
     f.long_term_named, f.real_failure, f.handle_disagree, f.anything_else,
     f.photos ? JSON.stringify(f.photos) : null,
+    f.met_where,
     f.completeness_pct, JSON.stringify({ ...body, photos: undefined })
   ).run();
 
