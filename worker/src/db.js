@@ -158,13 +158,17 @@ const SCHEMA_STATEMENTS = [
     can_cook          INTEGER,
     skills            TEXT,
     hobbies           TEXT,
-    long_term_named   TEXT,
-    real_failure      TEXT,
-    handle_disagree   TEXT,
-    anything_else     TEXT,
-    completeness_pct  INTEGER,
-    raw_json          TEXT,
-    created_at        INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    last_relationship_when      TEXT,
+    longest_relationship_length TEXT,
+    looking_for                 TEXT,
+    brings_to_table             TEXT,
+    long_term_named             TEXT,
+    real_failure                TEXT,
+    handle_disagree             TEXT,
+    anything_else               TEXT,
+    completeness_pct            INTEGER,
+    raw_json                    TEXT,
+    created_at                  INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_intake_created ON intake_submissions(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_intake_contact ON intake_submissions(contact_id)`,
@@ -185,10 +189,25 @@ const ADD_COLUMN_MIGRATIONS = [
   ['contacts', 'handle_whatsapp',   'TEXT'],
   ['contacts', 'recommend_action',  'TEXT'],  // last scan's recommendation
   ['contacts', 'last_scanned_at',   'INTEGER'],
+  // Phase 5 intake form additions (safe for DBs that created the base table
+  // before these columns existed — a no-op on fresh DBs).
+  ['intake_submissions', 'last_relationship_when',      'TEXT'],
+  ['intake_submissions', 'longest_relationship_length', 'TEXT'],
+  ['intake_submissions', 'looking_for',                 'TEXT'],
+  ['intake_submissions', 'brings_to_table',             'TEXT'],
 ];
 
 async function applyAddColumns(env) {
   for (const [table, column, spec] of ADD_COLUMN_MIGRATIONS) {
+    // Skip tables that don't exist yet — the base batch's CREATE TABLE will
+    // build them with all current columns included. applyAddColumns runs
+    // BEFORE the base batch (so index statements on new columns succeed on
+    // older DBs), so this skip is the correct no-op for a fresh install.
+    const tableExists = await env.DB.prepare(
+      `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
+    ).bind(table).first();
+    if (!tableExists) continue;
+
     const existing = await env.DB.prepare(
       `SELECT 1 AS present FROM pragma_table_info(?) WHERE name = ?`
     ).bind(table, column).first();

@@ -14,7 +14,9 @@
     'contact_handle', 'age', 'height_cm', 'speaks_spanish', 'speaks_english',
     'has_kids', 'location', 'will_travel', 'availability', 'has_car',
     'can_drive', 'has_pets', 'likes_cats', 'job', 'can_cook',
-    'skills', 'hobbies', 'long_term_named', 'real_failure', 'handle_disagree',
+    'skills', 'hobbies', 'last_relationship_when', 'longest_relationship_length',
+    'looking_for', 'brings_to_table', 'long_term_named', 'real_failure',
+    'handle_disagree',
   ];
 
   const BOOL_KEYS = new Set([

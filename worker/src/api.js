@@ -1128,12 +1128,15 @@ function clipInt(v, min, max) {
 }
 
 function computeCompleteness(fields) {
-  // 20 fields that aren't just "did you fill the required name box".
+  // Non-trivial fields; keep this list in sync with intake.js PROGRESS_KEYS
+  // so the UI percent matches what gets stored.
   const keys = [
     'contact_handle', 'age', 'height_cm', 'speaks_spanish', 'speaks_english',
     'has_kids', 'location', 'will_travel', 'availability', 'has_car',
     'can_drive', 'has_pets', 'likes_cats', 'job', 'can_cook',
-    'skills', 'hobbies', 'long_term_named', 'real_failure', 'handle_disagree',
+    'skills', 'hobbies', 'last_relationship_when', 'longest_relationship_length',
+    'looking_for', 'brings_to_table', 'long_term_named', 'real_failure',
+    'handle_disagree',
   ];
   let filled = 0;
   for (const k of keys) if (fields[k] != null && fields[k] !== '') filled++;
@@ -1163,6 +1166,10 @@ function renderIntakeNotes(f) {
   if (f.can_cook != null)   lines.push(`cooks: ${f.can_cook ? 'yes' : 'no'}`);
   if (f.skills)             lines.push(`skills: ${f.skills}`);
   if (f.hobbies)            lines.push(`hobbies: ${f.hobbies}`);
+  if (f.last_relationship_when)      lines.push(`last relationship: ${f.last_relationship_when}`);
+  if (f.longest_relationship_length) lines.push(`longest relationship: ${f.longest_relationship_length}`);
+  if (f.looking_for)        lines.push(`what he's looking for:\n  ${f.looking_for}`);
+  if (f.brings_to_table)    lines.push(`what he brings to the table:\n  ${f.brings_to_table}`);
   if (f.long_term_named)    lines.push(`long-term named connection:\n  ${f.long_term_named}`);
   if (f.real_failure)       lines.push(`one real failure he named:\n  ${f.real_failure}`);
   if (f.handle_disagree)    lines.push(`how he handles disagreement:\n  ${f.handle_disagree}`);
@@ -1205,6 +1212,10 @@ async function handleIntakeSubmit(req, env) {
     can_cook:        clipBool(body?.can_cook),
     skills:          clipStr(body?.skills, 1000),
     hobbies:         clipStr(body?.hobbies, 1000),
+    last_relationship_when:      clipStr(body?.last_relationship_when, 300),
+    longest_relationship_length: clipStr(body?.longest_relationship_length, 300),
+    looking_for:     clipStr(body?.looking_for, 2000),
+    brings_to_table: clipStr(body?.brings_to_table, 2000),
     long_term_named: clipStr(body?.long_term_named, 2000),
     real_failure:    clipStr(body?.real_failure, 2000),
     handle_disagree: clipStr(body?.handle_disagree, 2000),
@@ -1245,15 +1256,19 @@ async function handleIntakeSubmit(req, env) {
       (contact_id, display_name, contact_platform, contact_handle, age, height_cm,
        speaks_spanish, speaks_english, has_kids, kids_detail, location, will_travel,
        availability, has_car, is_4x4, can_drive, has_pets, pets_detail, likes_cats,
-       job, can_cook, skills, hobbies, long_term_named, real_failure,
-       handle_disagree, anything_else, completeness_pct, raw_json)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       job, can_cook, skills, hobbies,
+       last_relationship_when, longest_relationship_length, looking_for, brings_to_table,
+       long_term_named, real_failure, handle_disagree, anything_else,
+       completeness_pct, raw_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     contactId, f.display_name, f.contact_platform, f.contact_handle, f.age, f.height_cm,
     f.speaks_spanish, f.speaks_english, f.has_kids, f.kids_detail, f.location, f.will_travel,
     f.availability, f.has_car, f.is_4x4, f.can_drive, f.has_pets, f.pets_detail, f.likes_cats,
-    f.job, f.can_cook, f.skills, f.hobbies, f.long_term_named, f.real_failure,
-    f.handle_disagree, f.anything_else, f.completeness_pct, JSON.stringify(body)
+    f.job, f.can_cook, f.skills, f.hobbies,
+    f.last_relationship_when, f.longest_relationship_length, f.looking_for, f.brings_to_table,
+    f.long_term_named, f.real_failure, f.handle_disagree, f.anything_else,
+    f.completeness_pct, JSON.stringify(body)
   ).run();
 
   return json({ ok: true, completeness_pct: f.completeness_pct });

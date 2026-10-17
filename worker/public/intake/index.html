@@ -54,7 +54,7 @@
 
     <section class="card">
       <h2>The non-negotiables</h2>
-      <p class="helper">Be honest here. Lying on these costs both of you time.</p>
+      <p class="helper">Be honest here. Lying on these costs both of you time. She prefers <strong>both</strong> Spanish and English — one won't cut it.</p>
       <div class="row">
         <label>Your height (cm)
           <input type="number" name="height_cm" min="100" max="260" placeholder="183 = 6'0&quot;" autocomplete="off">
@@ -64,12 +64,12 @@
         </label>
       </div>
       <fieldset class="tri">
-        <legend>Spanish</legend>
+        <legend>Spanish (both preferred)</legend>
         <label><input type="radio" name="speaks_spanish" value="1"> Fluent</label>
         <label><input type="radio" name="speaks_spanish" value="0"> Not really</label>
       </fieldset>
       <fieldset class="tri">
-        <legend>English</legend>
+        <legend>English (both preferred)</legend>
         <label><input type="radio" name="speaks_english" value="1"> Fluent</label>
         <label><input type="radio" name="speaks_english" value="0"> Not really</label>
       </fieldset>
@@ -154,7 +154,23 @@
     </section>
 
     <section class="card">
-      <h2>Three deeper ones (optional, but they matter)</h2>
+      <h2>Relationship history</h2>
+      <label>When was your last relationship?
+        <input type="text" name="last_relationship_when" maxlength="300" placeholder="ended 2 years ago · currently married · never had one">
+      </label>
+      <label>How long was your longest relationship?
+        <input type="text" name="longest_relationship_length" maxlength="300" placeholder="e.g. 7 years">
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>The deeper ones (optional, but they matter)</h2>
+      <label>What are you looking for?
+        <textarea name="looking_for" maxlength="2000" rows="3" placeholder="be specific — casual, dating, something ongoing, poly-compatible, friendship-with-chemistry… whatever is true"></textarea>
+      </label>
+      <label>What do you bring to the table?
+        <textarea name="brings_to_table" maxlength="2000" rows="3" placeholder="not a resume — what you're actually like to be around"></textarea>
+      </label>
       <label>Tell her about someone you've been close to for 10+ years — a friend, family member, or partner. Who, how long, what the connection is.
         <textarea name="long_term_named" maxlength="2000" rows="3"></textarea>
       </label>
