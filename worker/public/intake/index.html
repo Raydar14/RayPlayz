@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intro to Ray</title>
+<link rel="stylesheet" href="intake.css">
+</head>
+<body>
+<main class="wrap">
+
+  <header class="hero">
+    <div class="brand">RAY PLAYZ</div>
+    <h1>Intro form</h1>
+    <p class="lede">
+      Quick form, not a quiz. Answer what feels easy. You can hit
+      <strong>Send what I have</strong> any time — the full form matters
+      more than a perfect form, but a half-finished one is still worth
+      sending.
+    </p>
+  </header>
+
+  <form id="intakeForm" novalidate>
+
+    <section class="card">
+      <h2>Who you are</h2>
+      <div class="row">
+        <label>Your name <span class="req">*</span>
+          <input type="text" name="display_name" maxlength="200" required autocomplete="given-name">
+        </label>
+        <label>Age
+          <input type="number" name="age" min="18" max="110" autocomplete="off">
+        </label>
+      </div>
+      <div class="row">
+        <label>How should she reach you?
+          <select name="contact_platform">
+            <option value="">— pick one —</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="ig">Instagram</option>
+            <option value="tinder">Tinder</option>
+            <option value="bumble">Bumble</option>
+            <option value="fetlife">Fetlife</option>
+            <option value="tiktok">TikTok</option>
+            <option value="x">X / Twitter</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Handle / number
+          <input type="text" name="contact_handle" maxlength="200" placeholder="@you · phone · username" autocomplete="off">
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>The non-negotiables</h2>
+      <p class="helper">Be honest here. Lying on these costs both of you time. She prefers <strong>both</strong> Spanish and English — one won't cut it.</p>
+      <div class="row">
+        <label>Your height (cm)
+          <input type="number" name="height_cm" min="100" max="260" placeholder="183 = 6'0&quot;" autocomplete="off">
+        </label>
+        <label>&nbsp;
+          <span class="helper">6'0" = 183 · 6'2" = 188 · 6'4" = 193</span>
+        </label>
+      </div>
+      <fieldset class="tri">
+        <legend>Spanish (both preferred)</legend>
+        <label><input type="radio" name="speaks_spanish" value="1"> Fluent</label>
+        <label><input type="radio" name="speaks_spanish" value="0"> Not really</label>
+      </fieldset>
+      <fieldset class="tri">
+        <legend>English (both preferred)</legend>
+        <label><input type="radio" name="speaks_english" value="1"> Fluent</label>
+        <label><input type="radio" name="speaks_english" value="0"> Not really</label>
+      </fieldset>
+    </section>
+
+    <section class="card">
+      <h2>Life basics</h2>
+      <fieldset class="tri">
+        <legend>Do you have kids?</legend>
+        <label><input type="radio" name="has_kids" value="1"> Yes</label>
+        <label><input type="radio" name="has_kids" value="0"> No</label>
+      </fieldset>
+      <label>If yes — how many, how old, custody setup
+        <input type="text" name="kids_detail" maxlength="500" placeholder="two, 8 &amp; 11, 50/50">
+      </label>
+      <label>Where do you live?
+        <input type="text" name="location" maxlength="300" placeholder="town, country">
+      </label>
+      <fieldset class="tri">
+        <legend>Do you have pets?</legend>
+        <label><input type="radio" name="has_pets" value="1"> Yes</label>
+        <label><input type="radio" name="has_pets" value="0"> No</label>
+      </fieldset>
+      <label>If yes — what pets
+        <input type="text" name="pets_detail" maxlength="300" placeholder="dog, two cats, chickens">
+      </label>
+      <fieldset class="tri">
+        <legend>Do you like cats?</legend>
+        <label><input type="radio" name="likes_cats" value="1"> Yes</label>
+        <label><input type="radio" name="likes_cats" value="0"> No</label>
+      </fieldset>
+    </section>
+
+    <section class="card">
+      <h2>Getting around &amp; getting together</h2>
+      <fieldset class="tri">
+        <legend>Can you drive?</legend>
+        <label><input type="radio" name="can_drive" value="1"> Yes</label>
+        <label><input type="radio" name="can_drive" value="0"> No</label>
+      </fieldset>
+      <fieldset class="tri">
+        <legend>Do you have a car?</legend>
+        <label><input type="radio" name="has_car" value="1"> Yes</label>
+        <label><input type="radio" name="has_car" value="0"> No</label>
+      </fieldset>
+      <fieldset class="tri">
+        <legend>Is it 4x4?</legend>
+        <label><input type="radio" name="is_4x4" value="1"> Yes</label>
+        <label><input type="radio" name="is_4x4" value="0"> No</label>
+      </fieldset>
+      <fieldset class="tri">
+        <legend>Would you travel to see her?</legend>
+        <label><input type="radio" name="will_travel" value="1"> Yes</label>
+        <label><input type="radio" name="will_travel" value="0"> No</label>
+      </fieldset>
+      <label>When are you usually free?
+        <input type="text" name="availability" maxlength="500" placeholder="weeknights after 7, weekends open">
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Work &amp; what you're good at</h2>
+      <label>What do you do for work?
+        <input type="text" name="job" maxlength="300">
+      </label>
+      <fieldset class="tri">
+        <legend>Can you cook?</legend>
+        <label><input type="radio" name="can_cook" value="1"> Yes</label>
+        <label><input type="radio" name="can_cook" value="0"> No</label>
+      </fieldset>
+      <label>Practical skills you actually have
+        <input type="text" name="skills" maxlength="1000" placeholder="welding, mechanic, IT, computers, AI, carpentry, plumbing, electrical…">
+        <span class="helper">List what you can really do — not what you've googled.</span>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>What you do for fun</h2>
+      <label>Hobbies / what fills your time outside work
+        <textarea name="hobbies" maxlength="1000" rows="3"></textarea>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Photos (up to 3)</h2>
+      <p class="helper">Optional. Face + a full-body in natural light tells her more than ten selfies. We shrink them in your browser before sending — no originals leave your phone.</p>
+      <div class="photo-row">
+        <label class="photo-slot" data-slot="0">
+          <input type="file" accept="image/*" class="photo-input">
+          <div class="photo-preview">
+            <span class="photo-plus">+</span>
+            <span class="photo-label">Photo 1</span>
+          </div>
+          <button type="button" class="photo-remove" hidden>×</button>
+        </label>
+        <label class="photo-slot" data-slot="1">
+          <input type="file" accept="image/*" class="photo-input">
+          <div class="photo-preview">
+            <span class="photo-plus">+</span>
+            <span class="photo-label">Photo 2</span>
+          </div>
+          <button type="button" class="photo-remove" hidden>×</button>
+        </label>
+        <label class="photo-slot" data-slot="2">
+          <input type="file" accept="image/*" class="photo-input">
+          <div class="photo-preview">
+            <span class="photo-plus">+</span>
+            <span class="photo-label">Photo 3</span>
+          </div>
+          <button type="button" class="photo-remove" hidden>×</button>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Relationship history</h2>
+      <label>When was your last relationship?
+        <input type="text" name="last_relationship_when" maxlength="300" placeholder="ended 2 years ago · currently married · never had one">
+      </label>
+      <label>How long was your longest relationship?
+        <input type="text" name="longest_relationship_length" maxlength="300" placeholder="e.g. 7 years">
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>The deeper ones (optional, but they matter)</h2>
+      <label>What are you looking for?
+        <textarea name="looking_for" maxlength="2000" rows="3" placeholder="be specific — casual, dating, something ongoing, poly-compatible, friendship-with-chemistry… whatever is true"></textarea>
+      </label>
+      <label>What do you bring to the table?
+        <textarea name="brings_to_table" maxlength="2000" rows="3" placeholder="not a resume — what you're actually like to be around"></textarea>
+      </label>
+      <label>Tell her about someone you've been close to for 10+ years — a friend, family member, or partner. Who, how long, what the connection is.
+        <textarea name="long_term_named" maxlength="2000" rows="3"></textarea>
+      </label>
+      <label>Name one real failure of yours. Not reframed as a strength.
+        <textarea name="real_failure" maxlength="2000" rows="3"></textarea>
+      </label>
+      <label>How do you handle it when a woman you care about disagrees with you?
+        <textarea name="handle_disagree" maxlength="2000" rows="3"></textarea>
+      </label>
+      <label>Anything else you want her to know?
+        <textarea name="anything_else" maxlength="2000" rows="3"></textarea>
+      </label>
+    </section>
+
+    <div class="submit-bar">
+      <button type="submit" id="submitBtn" class="primary">Send to Ray</button>
+      <div class="progress">
+        <span id="progressPct">0%</span> complete
+      </div>
+    </div>
+
+    <div id="result" class="result" hidden></div>
+  </form>
+
+  <footer class="foot">
+    <p>Your answers go only to Ray. No marketing, no third parties.</p>
+  </footer>
+
+</main>
+<script src="intake.js"></script>
+</body>
+</html>

@@ -315,12 +315,30 @@ async function handleContactGet(req, env, url, params) {
        ORDER BY created_at DESC`
   ).bind(id).all();
 
+  // Most recent intake photos (if any). Each row's photos_json is a
+  // JSON-encoded array of base64 data URLs; parse and flatten. We only
+  // return the newest submission's photos so a repeat intake doesn't
+  // stack ever-older selfies at the top of the gallery.
+  const intakeRow = await env.DB.prepare(
+    `SELECT photos_json FROM intake_submissions
+       WHERE contact_id = ? AND photos_json IS NOT NULL
+       ORDER BY created_at DESC LIMIT 1`
+  ).bind(id).first();
+  let intake_photos = [];
+  if (intakeRow?.photos_json) {
+    try {
+      const arr = JSON.parse(intakeRow.photos_json);
+      if (Array.isArray(arr)) intake_photos = arr.filter(x => typeof x === 'string');
+    } catch { /* ignore malformed row */ }
+  }
+
   return json({
     contact,
-    messages:   messages.results ?? [],
-    tags:       (tags.results ?? []).map(r => r.tag),
-    follow_ups: followUps.results ?? [],
-    flags:      flags.results ?? [],
+    messages:       messages.results ?? [],
+    tags:           (tags.results ?? []).map(r => r.tag),
+    follow_ups:     followUps.results ?? [],
+    flags:          flags.results ?? [],
+    intake_photos,
   });
 }
 
@@ -1092,6 +1110,213 @@ async function handleIngestImage(req, env) {
     { detail: extraction.issue || 'Vision could not classify this image as a thread or inbox.' });
 }
 
+// ---------- public intake form (Phase 5) ----------
+//
+// A suitor filling out the public /intake form POSTs here. No auth: this is
+// explicitly public, that's the point. We store the raw submission AND auto-
+// create a `new`/`dating` contact so Ray sees it on the dashboard immediately,
+// with the hard-filter fields (height, Spanish, English) populated and a
+// nicely formatted summary dumped into contact.notes.
+//
+// Partial submissions are allowed — only display_name is required. Everything
+// else is optional. We never trust input lengths blindly: each field is
+// clipped to a sane cap so a hostile form submission can't tank storage.
+
+const INTAKE_PLATFORMS = ['ig', 'tinder', 'bumble', 'fetlife', 'tiktok', 'x', 'whatsapp', 'other'];
+
+// Up to 3 photos per submission. Each one is a client-resized JPEG/PNG/WebP
+// delivered as a `data:image/...;base64,...` URL. We cap each at 800KB (base64
+// bytes) which, after 1.33x base64 overhead, is roughly a 600KB binary — plenty
+// for a ~1200px long-edge JPEG at quality 0.80. Over the cap we silently drop
+// the extra bytes rather than failing the whole submission.
+const MAX_PHOTOS = 3;
+const MAX_PHOTO_BYTES = 800 * 1024;
+const PHOTO_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+
+function clipPhotos(v) {
+  if (!Array.isArray(v)) return null;
+  const out = [];
+  for (const p of v) {
+    if (typeof p !== 'string') continue;
+    if (!PHOTO_RE.test(p)) continue;
+    if (p.length > MAX_PHOTO_BYTES) continue;
+    out.push(p);
+    if (out.length >= MAX_PHOTOS) break;
+  }
+  return out.length ? out : null;
+}
+
+function clipStr(v, max) {
+  if (v == null) return null;
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s) return null;
+  return s.length > max ? s.slice(0, max) : s;
+}
+function clipBool(v) {
+  if (v === true || v === 1 || v === '1' || v === 'yes') return 1;
+  if (v === false || v === 0 || v === '0' || v === 'no') return 0;
+  return null;
+}
+function clipInt(v, min, max) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  const r = Math.round(n);
+  if (r < min || r > max) return null;
+  return r;
+}
+
+function computeCompleteness(fields) {
+  // Non-trivial fields; keep this list in sync with intake.js PROGRESS_KEYS
+  // so the UI percent matches what gets stored.
+  const keys = [
+    'contact_handle', 'age', 'height_cm', 'speaks_spanish', 'speaks_english',
+    'has_kids', 'location', 'will_travel', 'availability', 'has_car',
+    'can_drive', 'has_pets', 'likes_cats', 'job', 'can_cook',
+    'skills', 'hobbies', 'last_relationship_when', 'longest_relationship_length',
+    'looking_for', 'brings_to_table', 'long_term_named', 'real_failure',
+    'handle_disagree',
+  ];
+  let filled = 0;
+  for (const k of keys) if (fields[k] != null && fields[k] !== '') filled++;
+  return Math.round((filled / keys.length) * 100);
+}
+
+function renderIntakeNotes(f) {
+  const lines = [];
+  lines.push('=== intake form ===');
+  lines.push(`submitted ${new Date().toISOString()}`);
+  if (f.contact_platform || f.contact_handle) {
+    lines.push(`reach via: ${f.contact_platform || '?'} ${f.contact_handle || ''}`.trim());
+  }
+  if (f.age != null)        lines.push(`age: ${f.age}`);
+  if (f.height_cm != null)  lines.push(`height: ${f.height_cm} cm`);
+  if (f.speaks_spanish != null) lines.push(`spanish: ${f.speaks_spanish ? 'yes' : 'no'}`);
+  if (f.speaks_english != null) lines.push(`english: ${f.speaks_english ? 'yes' : 'no'}`);
+  if (f.has_kids != null)   lines.push(`kids: ${f.has_kids ? 'yes' : 'no'}${f.kids_detail ? ' — ' + f.kids_detail : ''}`);
+  if (f.location)           lines.push(`lives: ${f.location}`);
+  if (f.will_travel != null) lines.push(`will travel to see her: ${f.will_travel ? 'yes' : 'no'}`);
+  if (f.availability)       lines.push(`availability: ${f.availability}`);
+  if (f.has_car != null)    lines.push(`has car: ${f.has_car ? 'yes' : 'no'}${f.is_4x4 ? ' (4x4)' : ''}`);
+  if (f.can_drive != null)  lines.push(`drives: ${f.can_drive ? 'yes' : 'no'}`);
+  if (f.has_pets != null)   lines.push(`pets: ${f.has_pets ? 'yes' : 'no'}${f.pets_detail ? ' — ' + f.pets_detail : ''}`);
+  if (f.likes_cats != null) lines.push(`likes cats: ${f.likes_cats ? 'yes' : 'no'}`);
+  if (f.job)                lines.push(`job: ${f.job}`);
+  if (f.can_cook != null)   lines.push(`cooks: ${f.can_cook ? 'yes' : 'no'}`);
+  if (f.skills)             lines.push(`skills: ${f.skills}`);
+  if (f.hobbies)            lines.push(`hobbies: ${f.hobbies}`);
+  if (f.last_relationship_when)      lines.push(`last relationship: ${f.last_relationship_when}`);
+  if (f.longest_relationship_length) lines.push(`longest relationship: ${f.longest_relationship_length}`);
+  if (f.looking_for)        lines.push(`what he's looking for:\n  ${f.looking_for}`);
+  if (f.brings_to_table)    lines.push(`what he brings to the table:\n  ${f.brings_to_table}`);
+  if (f.long_term_named)    lines.push(`long-term named connection:\n  ${f.long_term_named}`);
+  if (f.real_failure)       lines.push(`one real failure he named:\n  ${f.real_failure}`);
+  if (f.handle_disagree)    lines.push(`how he handles disagreement:\n  ${f.handle_disagree}`);
+  if (f.anything_else)      lines.push(`anything else:\n  ${f.anything_else}`);
+  if (f.photos?.length)     lines.push(`photos: ${f.photos.length} attached (see photo panel)`);
+  lines.push(`completeness: ${f.completeness_pct}%`);
+  return lines.join('\n');
+}
+
+async function handleIntakeSubmit(req, env) {
+  await ensureSchema(env);
+  let body;
+  try { body = await req.json(); } catch { return err(400, 'bad_request'); }
+
+  const display_name = clipStr(body?.display_name, 200);
+  if (!display_name) return err(400, 'display_name_required');
+
+  const platformRaw = clipStr(body?.contact_platform, 20);
+  const contact_platform = platformRaw && INTAKE_PLATFORMS.includes(platformRaw) ? platformRaw : null;
+
+  const f = {
+    display_name,
+    contact_platform,
+    contact_handle:  clipStr(body?.contact_handle, 200),
+    age:             clipInt(body?.age, 18, 110),
+    height_cm:       clipInt(body?.height_cm, 100, 260),
+    speaks_spanish:  clipBool(body?.speaks_spanish),
+    speaks_english:  clipBool(body?.speaks_english),
+    has_kids:        clipBool(body?.has_kids),
+    kids_detail:     clipStr(body?.kids_detail, 500),
+    location:        clipStr(body?.location, 300),
+    will_travel:     clipBool(body?.will_travel),
+    availability:    clipStr(body?.availability, 500),
+    has_car:         clipBool(body?.has_car),
+    is_4x4:          clipBool(body?.is_4x4),
+    can_drive:       clipBool(body?.can_drive),
+    has_pets:        clipBool(body?.has_pets),
+    pets_detail:     clipStr(body?.pets_detail, 300),
+    likes_cats:      clipBool(body?.likes_cats),
+    job:             clipStr(body?.job, 300),
+    can_cook:        clipBool(body?.can_cook),
+    skills:          clipStr(body?.skills, 1000),
+    hobbies:         clipStr(body?.hobbies, 1000),
+    last_relationship_when:      clipStr(body?.last_relationship_when, 300),
+    longest_relationship_length: clipStr(body?.longest_relationship_length, 300),
+    looking_for:     clipStr(body?.looking_for, 2000),
+    brings_to_table: clipStr(body?.brings_to_table, 2000),
+    long_term_named: clipStr(body?.long_term_named, 2000),
+    real_failure:    clipStr(body?.real_failure, 2000),
+    handle_disagree: clipStr(body?.handle_disagree, 2000),
+    anything_else:   clipStr(body?.anything_else, 2000),
+    photos:          clipPhotos(body?.photos),
+  };
+  f.completeness_pct = computeCompleteness(f);
+
+  // Build the contact. Map the platform handle into the right column if we
+  // have one; otherwise just the display_name.
+  const handleCols = {
+    ig: 'handle_ig', tinder: 'handle_tinder', bumble: 'handle_bumble',
+    fetlife: 'handle_fetlife', tiktok: 'handle_tiktok', x: 'handle_x',
+    whatsapp: 'handle_whatsapp',
+  };
+  const handleCol = f.contact_platform && handleCols[f.contact_platform];
+
+  const notes = renderIntakeNotes(f);
+
+  // Insert contact. We use a dynamic column list because handle_* is
+  // conditional on which platform he gave.
+  const cols = ['display_name', 'bucket', 'status', 'notes'];
+  const vals = [display_name, 'dating', 'new', notes];
+  if (handleCol && f.contact_handle) {
+    cols.push(handleCol); vals.push(f.contact_handle);
+  }
+  if (f.height_cm != null)      { cols.push('height_cm');      vals.push(f.height_cm); }
+  if (f.speaks_spanish != null) { cols.push('speaks_spanish'); vals.push(f.speaks_spanish); }
+  if (f.speaks_english != null) { cols.push('speaks_english'); vals.push(f.speaks_english); }
+
+  const placeholders = cols.map(() => '?').join(', ');
+  const insertSql = `INSERT INTO contacts (${cols.join(', ')}) VALUES (${placeholders})`;
+  const result = await env.DB.prepare(insertSql).bind(...vals).run();
+  const contactId = result.meta?.last_row_id ?? null;
+
+  // Save the submission with a link to the contact.
+  await env.DB.prepare(
+    `INSERT INTO intake_submissions
+      (contact_id, display_name, contact_platform, contact_handle, age, height_cm,
+       speaks_spanish, speaks_english, has_kids, kids_detail, location, will_travel,
+       availability, has_car, is_4x4, can_drive, has_pets, pets_detail, likes_cats,
+       job, can_cook, skills, hobbies,
+       last_relationship_when, longest_relationship_length, looking_for, brings_to_table,
+       long_term_named, real_failure, handle_disagree, anything_else, photos_json,
+       completeness_pct, raw_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    contactId, f.display_name, f.contact_platform, f.contact_handle, f.age, f.height_cm,
+    f.speaks_spanish, f.speaks_english, f.has_kids, f.kids_detail, f.location, f.will_travel,
+    f.availability, f.has_car, f.is_4x4, f.can_drive, f.has_pets, f.pets_detail, f.likes_cats,
+    f.job, f.can_cook, f.skills, f.hobbies,
+    f.last_relationship_when, f.longest_relationship_length, f.looking_for, f.brings_to_table,
+    f.long_term_named, f.real_failure, f.handle_disagree, f.anything_else,
+    f.photos ? JSON.stringify(f.photos) : null,
+    f.completeness_pct, JSON.stringify({ ...body, photos: undefined })
+  ).run();
+
+  return json({ ok: true, completeness_pct: f.completeness_pct });
+}
+
 // ---------- route table ----------
 
 const ROUTES = [
@@ -1099,6 +1324,7 @@ const ROUTES = [
   { method: 'POST',   pattern: '/api/login',                             handler: handleLogin,          public: true },
   { method: 'POST',   pattern: '/api/logout',                            handler: handleLogout,         public: true },
   { method: 'GET',    pattern: '/api/me',                                handler: handleMe,             public: true },
+  { method: 'POST',   pattern: '/api/intake',                            handler: handleIntakeSubmit,   public: true },
 
   // authed
   { method: 'GET',    pattern: '/api/counts',                            handler: handleCounts },

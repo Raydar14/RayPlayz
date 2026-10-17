@@ -429,6 +429,10 @@
     // ---- gate: long-term named ----
     body.appendChild(renderGate(c));
 
+    // ---- intake photos ----
+    const photoPanel = renderIntakePhotosPanel();
+    if (photoPanel) body.appendChild(photoPanel);
+
     // ---- notes ----
     body.appendChild(renderNotesSection(c));
 
@@ -578,6 +582,22 @@
     });
     gate.appendChild(left); gate.appendChild(btn);
     return gate;
+  }
+
+  function renderIntakePhotosPanel() {
+    const photos = detail?.intake_photos || [];
+    if (!photos.length) return null;
+    const s = section('Intake photos (' + photos.length + ')');
+    const row = el('div', 'intake-photos');
+    for (const url of photos) {
+      const a = el('a', 'intake-photo');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener';
+      a.title = 'Click to open full-size';
+      a.style.backgroundImage = "url('" + url.replace(/'/g, "\\'") + "')";
+      row.appendChild(a);
+    }
+    s.appendChild(row);
+    return s;
   }
 
   function renderNotesSection(c) {
