@@ -168,12 +168,26 @@ const SCHEMA_STATEMENTS = [
     anything_else               TEXT,
     photos_json                 TEXT,
     met_where                   TEXT,
+    pet_name                    TEXT,
+    favorite_photo_slot         INTEGER,
+    date_idea                   TEXT,
+    message_for_ray             TEXT,
     completeness_pct            INTEGER,
     raw_json                    TEXT,
     created_at                  INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_intake_created ON intake_submissions(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_intake_contact ON intake_submissions(contact_id)`,
+
+  // ---- Phase 5: public site images (Ray's own photos for the intake form) ----
+  // 3 slot rows, each a base64 data URL that Ray uploads once from the
+  // dashboard settings modal. Served publicly to the intake form so suitors
+  // can pick their favorite.
+  `CREATE TABLE IF NOT EXISTS site_images (
+    slot        INTEGER PRIMARY KEY CHECK(slot IN (1, 2, 3)),
+    data_url    TEXT    NOT NULL,
+    updated_at  INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+  )`,
 
   `CREATE TABLE IF NOT EXISTS schema_meta (
     key    TEXT PRIMARY KEY,
@@ -199,6 +213,10 @@ const ADD_COLUMN_MIGRATIONS = [
   ['intake_submissions', 'brings_to_table',             'TEXT'],
   ['intake_submissions', 'photos_json',                 'TEXT'],
   ['intake_submissions', 'met_where',                   'TEXT'],
+  ['intake_submissions', 'pet_name',                    'TEXT'],
+  ['intake_submissions', 'favorite_photo_slot',         'INTEGER'],
+  ['intake_submissions', 'date_idea',                   'TEXT'],
+  ['intake_submissions', 'message_for_ray',             'TEXT'],
 ];
 
 async function applyAddColumns(env) {

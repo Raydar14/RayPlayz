@@ -1126,6 +1126,11 @@ const INTAKE_PLATFORMS = ['ig', 'tinder', 'bumble', 'fetlife', 'tiktok', 'x', 'w
 // Where he says he first encountered her. Superset of INTAKE_PLATFORMS plus
 // 'in_person' for people who met at an event, through a mutual friend, etc.
 const INTAKE_MET_WHERE = [...INTAKE_PLATFORMS, 'in_person'];
+// Preset pet-name choices. 'custom' means use the free-text pet_name_custom
+// field; anything else is one of the preset labels. Stored as a plain string
+// in the DB (either a preset or the custom text), so this is only a
+// client-side convenience list — the server accepts any short string.
+const INTAKE_PET_NAME_PRESETS = ['baby', 'baby girl', 'princess', 'baby doll', 'bitch'];
 
 // Up to 3 photos per submission. Each one is a client-resized JPEG/PNG/WebP
 // delivered as a `data:image/...;base64,...` URL. We cap each at 800KB (base64
@@ -1179,7 +1184,8 @@ function computeCompleteness(fields) {
     'can_drive', 'has_pets', 'likes_cats', 'job', 'can_cook',
     'skills', 'hobbies', 'last_relationship_when', 'longest_relationship_length',
     'looking_for', 'brings_to_table', 'long_term_named', 'real_failure',
-    'handle_disagree',
+    'handle_disagree', 'pet_name', 'favorite_photo_slot', 'date_idea',
+    'message_for_ray',
   ];
   let filled = 0;
   for (const k of keys) if (fields[k] != null && fields[k] !== '') filled++;
@@ -1217,6 +1223,10 @@ function renderIntakeNotes(f) {
   if (f.long_term_named)    lines.push(`long-term named connection:\n  ${f.long_term_named}`);
   if (f.real_failure)       lines.push(`one real failure he named:\n  ${f.real_failure}`);
   if (f.handle_disagree)    lines.push(`how he handles disagreement:\n  ${f.handle_disagree}`);
+  if (f.pet_name)           lines.push(`wants to call her: "${f.pet_name}"`);
+  if (f.favorite_photo_slot) lines.push(`favorite photo of hers: #${f.favorite_photo_slot}`);
+  if (f.date_idea)          lines.push(`date he'd take her on:\n  ${f.date_idea}`);
+  if (f.message_for_ray)    lines.push(`his message to her:\n  ${f.message_for_ray}`);
   if (f.anything_else)      lines.push(`anything else:\n  ${f.anything_else}`);
   if (f.photos?.length)     lines.push(`photos: ${f.photos.length} attached (see photo panel)`);
   lines.push(`completeness: ${f.completeness_pct}%`);
@@ -1270,6 +1280,10 @@ async function handleIntakeSubmit(req, env) {
     handle_disagree: clipStr(body?.handle_disagree, 2000),
     anything_else:   clipStr(body?.anything_else, 2000),
     photos:          clipPhotos(body?.photos),
+    pet_name:        clipStr(body?.pet_name, 100),
+    favorite_photo_slot: clipInt(body?.favorite_photo_slot, 1, 3),
+    date_idea:       clipStr(body?.date_idea, 2000),
+    message_for_ray: clipStr(body?.message_for_ray, 2000),
   };
   f.completeness_pct = computeCompleteness(f);
 
@@ -1309,8 +1323,9 @@ async function handleIntakeSubmit(req, env) {
        job, can_cook, skills, hobbies,
        last_relationship_when, longest_relationship_length, looking_for, brings_to_table,
        long_term_named, real_failure, handle_disagree, anything_else, photos_json,
-       met_where, completeness_pct, raw_json)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       met_where, pet_name, favorite_photo_slot, date_idea, message_for_ray,
+       completeness_pct, raw_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     contactId, f.display_name, f.contact_platform, f.contact_handle, f.age, f.height_cm,
     f.speaks_spanish, f.speaks_english, f.has_kids, f.kids_detail, f.location, f.will_travel,
@@ -1319,11 +1334,50 @@ async function handleIntakeSubmit(req, env) {
     f.last_relationship_when, f.longest_relationship_length, f.looking_for, f.brings_to_table,
     f.long_term_named, f.real_failure, f.handle_disagree, f.anything_else,
     f.photos ? JSON.stringify(f.photos) : null,
-    f.met_where,
+    f.met_where, f.pet_name, f.favorite_photo_slot, f.date_idea, f.message_for_ray,
     f.completeness_pct, JSON.stringify({ ...body, photos: undefined })
   ).run();
 
   return json({ ok: true, completeness_pct: f.completeness_pct });
+}
+
+// ---------- site images (Ray's own photos for the intake form) ----------
+//
+// Three slots. Ray uploads them once from the dashboard settings modal;
+// suitors see them on the intake form and pick a favorite. Public GET so
+// the intake form (which has no auth) can render them; authed POST so
+// only Ray can set them.
+
+async function handleSiteImagesGet(req, env) {
+  await ensureSchema(env);
+  const rows = await env.DB.prepare(
+    'SELECT slot, data_url FROM site_images ORDER BY slot ASC'
+  ).all();
+  return json({ images: rows.results ?? [] });
+}
+
+async function handleSiteImagePut(req, env) {
+  await ensureSchema(env);
+  let body;
+  try { body = await req.json(); } catch { return err(400, 'bad_request'); }
+  const slot = Number(body?.slot);
+  if (![1, 2, 3].includes(slot)) return err(400, 'bad_slot');
+  const dataURL = typeof body?.data_url === 'string' ? body.data_url : null;
+  if (!dataURL || !PHOTO_RE.test(dataURL)) return err(400, 'bad_data_url');
+  if (dataURL.length > MAX_PHOTO_BYTES) return err(400, 'photo_too_large');
+  await env.DB.prepare(
+    `INSERT INTO site_images (slot, data_url, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(slot) DO UPDATE SET data_url = excluded.data_url, updated_at = excluded.updated_at`
+  ).bind(slot, dataURL, Date.now()).run();
+  return json({ ok: true, slot });
+}
+
+async function handleSiteImageDelete(req, env, url, params) {
+  await ensureSchema(env);
+  const slot = Number(params.slot);
+  if (![1, 2, 3].includes(slot)) return err(400, 'bad_slot');
+  await env.DB.prepare('DELETE FROM site_images WHERE slot = ?').bind(slot).run();
+  return json({ ok: true });
 }
 
 // ---------- route table ----------
@@ -1334,6 +1388,7 @@ const ROUTES = [
   { method: 'POST',   pattern: '/api/logout',                            handler: handleLogout,         public: true },
   { method: 'GET',    pattern: '/api/me',                                handler: handleMe,             public: true },
   { method: 'POST',   pattern: '/api/intake',                            handler: handleIntakeSubmit,   public: true },
+  { method: 'GET',    pattern: '/api/site-images',                       handler: handleSiteImagesGet,  public: true },
 
   // authed
   { method: 'GET',    pattern: '/api/counts',                            handler: handleCounts },
@@ -1355,6 +1410,10 @@ const ROUTES = [
   { method: 'POST',   pattern: '/api/contacts/:id/scan',                 handler: handleContactScan },
   { method: 'POST',   pattern: '/api/scan-unscanned',                    handler: handleScanUnscanned },
   { method: 'GET',    pattern: '/api/ai-usage',                          handler: handleAiUsage },
+
+  // Site images (Phase 5): Ray's own photos for the intake form.
+  { method: 'PUT',    pattern: '/api/site-images',                       handler: handleSiteImagePut },
+  { method: 'DELETE', pattern: '/api/site-images/:slot',                 handler: handleSiteImageDelete },
 
   // Extension (Phase 3)
   { method: 'GET',    pattern: '/api/settings/extension-token',          handler: handleExtensionTokenInfo },

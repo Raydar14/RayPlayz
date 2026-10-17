@@ -144,3 +144,46 @@ button.primary:disabled{opacity:.6; cursor:wait}
   display:flex; align-items:center; justify-content:center;
   background:rgba(7,7,11,.75); color:var(--neon-ink); font-size:.78rem;
 }
+
+/* pet-name grid: tiles that look like pills, radio hidden inside */
+fieldset.pet-grid{
+  display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;
+  border:none; padding:0; margin:0 0 12px;
+}
+@media (min-width:520px){
+  fieldset.pet-grid{grid-template-columns:repeat(3, 1fr)}
+}
+fieldset.pet-grid label{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  padding:12px 10px; border:1px solid var(--stroke); border-radius:8px;
+  background:var(--void3); color:var(--ink); font-size:.95rem; margin:0;
+  cursor:pointer; font-weight:400;
+}
+fieldset.pet-grid label:hover{border-color:var(--neon-soft)}
+fieldset.pet-grid label:has(input:checked){
+  border-color:var(--neon); background:rgba(255,46,126,.08);
+  color:var(--neon-ink); font-weight:600;
+}
+
+/* favorite-of-ray's-photos row */
+.fav-photo-row{
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
+}
+.fav-photo-row .fav-slot{
+  display:block; margin:0; cursor:pointer;
+}
+.fav-photo-row .fav-slot .fav-img{
+  display:block; aspect-ratio:3 / 4; border-radius:10px;
+  border:2px solid var(--stroke2); background-size:cover; background-position:center;
+  transition:border-color .15s, transform .15s;
+}
+.fav-photo-row .fav-slot:hover .fav-img{border-color:var(--neon-soft)}
+.fav-photo-row .fav-slot input{position:absolute; opacity:0; pointer-events:none}
+.fav-photo-row .fav-slot:has(input:checked) .fav-img{
+  border-color:var(--neon); box-shadow:0 0 18px rgba(255,46,126,.4);
+}
+.fav-photo-row .fav-label{
+  display:block; text-align:center; margin-top:6px; font-size:.78rem;
+  color:var(--mute);
+}
+.fav-photo-row .fav-slot:has(input:checked) .fav-label{color:var(--neon-ink); font-weight:600}

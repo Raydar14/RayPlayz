@@ -151,6 +151,32 @@
       </div>
     </fieldset>
 
+    <fieldset style="margin-top:20px">
+      <legend>Your intake photos</legend>
+      <p class="hint" style="color:var(--mute); font-size:.98rem; line-height:1.55; margin:0 0 14px">
+        Upload three of your own photos. Suitors on the intake form pick their
+        favorite — a quick signal of taste. Photos are shrunk in your browser
+        before uploading. Clear a slot to remove.
+      </p>
+      <div id="siteImagesRow" class="site-images-row">
+        <label class="site-slot" data-slot="1">
+          <input type="file" accept="image/*" class="site-input">
+          <div class="site-preview"><span>Slot 1</span></div>
+          <button type="button" class="site-remove" hidden>×</button>
+        </label>
+        <label class="site-slot" data-slot="2">
+          <input type="file" accept="image/*" class="site-input">
+          <div class="site-preview"><span>Slot 2</span></div>
+          <button type="button" class="site-remove" hidden>×</button>
+        </label>
+        <label class="site-slot" data-slot="3">
+          <input type="file" accept="image/*" class="site-input">
+          <div class="site-preview"><span>Slot 3</span></div>
+          <button type="button" class="site-remove" hidden>×</button>
+        </label>
+      </div>
+    </fieldset>
+
     <div class="modal-actions">
       <button class="btn btn-ghost btn-sm" type="button" data-close>Close</button>
     </div>
